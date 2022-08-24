@@ -240,9 +240,10 @@ type TxPool struct {
 	signer      types.Signer
 	mu          sync.RWMutex
 
-	istanbul bool // Fork indicator whether we are in the istanbul stage.
-	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
-	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
+	istanbul  bool // Fork indicator whether we are in the istanbul stage.
+	eip2718   bool // Fork indicator whether we are using EIP-2718 type transactions.
+	eip1559   bool // Fork indicator whether we are using EIP-1559 type transactions.
+	eipEthPoW bool // Fork indicator whether we are using EIP-EthPoW type transactions.
 
 	currentState  *state.StateDB // Current state in the blockchain head
 	pendingNonces *txNoncer      // Pending state tracking virtual nonces
@@ -592,6 +593,12 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	if !pool.eip1559 && tx.Type() == types.DynamicFeeTxType {
 		return ErrTxTypeNotSupported
 	}
+
+	//reset new chainId to pool.signer
+	if pool.eipEthPoW {
+		pool.signer = types.LatestSigner(pool.chainconfig)
+	}
+
 	// Reject transactions over defined size to prevent DOS attacks
 	if uint64(tx.Size()) > txMaxSize {
 		return ErrOversizedData
@@ -1304,6 +1311,8 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.istanbul = pool.chainconfig.IsIstanbul(next)
 	pool.eip2718 = pool.chainconfig.IsBerlin(next)
 	pool.eip1559 = pool.chainconfig.IsLondon(next)
+	pool.eipEthPoW = pool.chainconfig.IsEthPoWFork(next)
+
 }
 
 // promoteExecutables moves transactions that have become processable from the
