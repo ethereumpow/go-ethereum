@@ -906,6 +906,9 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 			knownTxMeter.Mark(1)
 			continue
 		}
+		if pool.eipEthPoW {
+			pool.signer = types.LatestSigner(pool.chainconfig)
+		}
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
