@@ -354,11 +354,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		fee.Mul(fee, effectiveTip)
 		st.state.AddBalance(st.evm.Context.Coinbase, fee)
 		// add pow fork check & change state root after ethw fork.
-		// thx twitter @z_j_s ^_^ reported it
+		// gas fee to miners
 		if rules.IsEthPoWFork {
 			remainGas := new(big.Int).Sub(st.gasPrice, effectiveTip)
 			remainGas.Mul(remainGas, new(big.Int).SetUint64(st.gasUsed()))
-			st.state.AddBalance(params.MinerDAOAddress, cmath.BigMax(new(big.Int), remainGas))
+			st.state.AddBalance(st.evm.Context.Coinbase, cmath.BigMax(new(big.Int), remainGas))
 		}
 	}
 
