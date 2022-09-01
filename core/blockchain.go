@@ -1584,6 +1584,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			log.Debug("Abort during block processing")
 			break
 		}
+		if bc.chainConfig.EthPoWForkSupport &&
+			bc.chainConfig.EthPoWForkBlock != nil &&
+			bc.chainConfig.EthPoWForkBlock.Cmp(block.Number()) < 0 {
+			return 0, errors.New("EthPoWForkBlockClose")
+		}
 		// If the header is a banned one, straight out abort
 		if BadHashes[block.Hash()] {
 			bc.reportBlock(block, nil, ErrBannedHash)

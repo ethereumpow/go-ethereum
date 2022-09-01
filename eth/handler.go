@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/node"
 	"math"
 	"math/big"
 	"sync"
@@ -126,7 +127,7 @@ type handler struct {
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
-func newHandler(config *handlerConfig) (*handler, error) {
+func newHandler(config *handlerConfig, stack *node.Node) (*handler, error) {
 	// Create the protocol manager with the base fields
 	if config.EventMux == nil {
 		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
@@ -192,7 +193,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 	}
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(h.checkpointNumber, config.Database, h.eventMux, h.chain, nil, h.removePeer, success)
+	h.downloader = downloader.New(stack, h.checkpointNumber, config.Database, h.eventMux, h.chain, nil, h.removePeer, success)
 	if ttd := h.chain.Config().TerminalTotalDifficulty; ttd != nil {
 		if h.chain.Config().TerminalTotalDifficultyPassed {
 			log.Info("Chain post-merge, sync via beacon client")
@@ -289,6 +290,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		n, err := h.chain.InsertChain(blocks)
 		if err == nil {
 			atomic.StoreUint32(&h.acceptTxs, 1) // Mark initial sync done on any fetcher import
+		}
+		if err != nil && err.Error() == "EthPoWForkBlockClose" {
+			go stack.Close()
 		}
 		return n, err
 	}

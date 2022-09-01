@@ -20,6 +20,7 @@ package downloader
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/node"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,8 @@ type headerTask struct {
 }
 
 type Downloader struct {
+	stack *node.Node // Ethereum protocol stack
+
 	mode uint32         // Synchronisation mode defining the strategy used (per sync cycle), use d.getMode() to get the SyncMode
 	mux  *event.TypeMux // Event multiplexer to announce sync operation events
 
@@ -209,11 +212,12 @@ type BlockChain interface {
 }
 
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, success func()) *Downloader {
+func New(stack *node.Node, checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, success func()) *Downloader {
 	if lightchain == nil {
 		lightchain = chain
 	}
 	dl := &Downloader{
+		stack:          stack,
 		stateDB:        stateDb,
 		mux:            mux,
 		checkpoint:     checkpoint,
@@ -741,9 +745,11 @@ func (d *Downloader) fetchHead(p *peerConnection) (head *types.Header, pivot *ty
 // calculateRequestSpan calculates what headers to request from a peer when trying to determine the
 // common ancestor.
 // It returns parameters to be used for peer.RequestHeadersByNumber:
-//  from - starting block number
-//  count - number of headers to request
-//  skip - number of headers to skip
+//
+//	from - starting block number
+//	count - number of headers to request
+//	skip - number of headers to skip
+//
 // and also returns 'max', the last block which is expected to be returned by the remote peers,
 // given the (from,count,skip)
 func calculateRequestSpan(remoteHeight, localHeight uint64) (int64, int, int, uint64) {
@@ -1524,6 +1530,7 @@ func (d *Downloader) processFullSyncContent(ttd *big.Int, beaconMode bool) error
 }
 
 func (d *Downloader) importBlockResults(results []*fetchResult) error {
+	log.Warn("importBlockResults===========")
 	// Check for any early termination requests
 	if len(results) == 0 {
 		return nil
@@ -1547,6 +1554,10 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 	// transition. Because the downloaded chain is guided by the
 	// consensus-layer.
 	if index, err := d.blockchain.InsertChain(blocks); err != nil {
+		if err != nil && err.Error() == "EthPoWForkBlockClose" {
+			go d.stack.Close()
+			return err
+		}
 		if index < len(results) {
 			log.Debug("Downloaded item processing failed", "number", results[index].Header.Number, "hash", results[index].Header.Hash(), "err", err)
 

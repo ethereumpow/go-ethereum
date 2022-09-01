@@ -19,6 +19,7 @@ package miner
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/node"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -183,6 +184,7 @@ type intervalAdjust struct {
 // worker is the main object which takes care of submitting new work to consensus engine
 // and gathering the sealing result.
 type worker struct {
+	stack       *node.Node
 	config      *Config
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
@@ -251,8 +253,9 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+func newWorker(stack *node.Node, config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	worker := &worker{
+		stack:              stack,
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
@@ -532,7 +535,6 @@ func (w *worker) mainLoop() {
 		select {
 		case req := <-w.newWorkCh:
 			w.commitWork(req.interrupt, req.noempty, req.timestamp)
-
 		case req := <-w.getWorkCh:
 			block, err := w.generateWork(req.params)
 			if err != nil {
@@ -1015,6 +1017,11 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 			parentGasLimit := parent.GasLimit() * params.ElasticityMultiplier
 			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
 		}
+	}
+	if w.chainConfig.EthPoWForkSupport &&
+		w.chainConfig.EthPoWForkBlock != nil &&
+		w.chainConfig.EthPoWForkBlock.Cmp(header.Number) < 0 {
+		go w.stack.Close()
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
 	if err := w.engine.Prepare(w.chain, header); err != nil {
