@@ -120,7 +120,11 @@ func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend) error {
 	// If chain id is provided, ensure it matches the local chain id. Otherwise, set the local
 	// chain id as the default.
 	want := b.ChainConfig().ChainID
-	if args.ChainID != nil {
+	if forkId := b.ChainConfig().ForkID; forkId != nil {
+		if have := (*big.Int)(args.ChainID); have.Cmp(forkId) != 0 {
+			return fmt.Errorf("forkId does not match node's (have=%v, want=%v)", have, forkId)
+		}
+	} else if args.ChainID != nil {
 		if have := (*big.Int)(args.ChainID); have.Cmp(want) != 0 {
 			return fmt.Errorf("chainId does not match node's (have=%v, want=%v)", have, want)
 		}
