@@ -330,7 +330,44 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainHeaderReader, header, pa
 // the difficulty that a new block should have when created at time
 // given the parent block's time and difficulty.
 func (ethash *Ethash) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	return CalcDifficulty(chain.Config(), time, parent)
+	return NewCalcDifficulty(chain, time, parent)
+}
+
+// NewCalcDifficulty is the difficulty adjustment algorithm. It returns
+// the difficulty that a new block should have when created at time
+// given the parent block's time and difficulty.
+func NewCalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
+	next := new(big.Int).Add(parent.Number, big1)
+	config := chain.Config()
+	if config.IsEthPoWFork(next) {
+		return calcDifficultyEthPoW(time, parent)
+	}
+	ttd := config.EthPoWTotalDifficulty
+	if ttd != nil {
+		head := chain.CurrentHeader()
+		if td := chain.GetTd(head.Hash(), head.Number.Uint64()); td.Cmp(ttd) >= 0 {
+			// Mine with fixed difficulty until the fork num
+			return config.EthPoWStartDifficulty
+		}
+	}
+	switch {
+	case config.IsGrayGlacier(next):
+		return calcDifficultyEip5133(time, parent)
+	case config.IsArrowGlacier(next):
+		return calcDifficultyEip4345(time, parent)
+	case config.IsLondon(next):
+		return calcDifficultyEip3554(time, parent)
+	case config.IsMuirGlacier(next):
+		return calcDifficultyEip2384(time, parent)
+	case config.IsConstantinople(next):
+		return calcDifficultyConstantinople(time, parent)
+	case config.IsByzantium(next):
+		return calcDifficultyByzantium(time, parent)
+	case config.IsHomestead(next):
+		return calcDifficultyHomestead(time, parent)
+	default:
+		return calcDifficultyFrontier(time, parent)
+	}
 }
 
 // CalcDifficulty is the difficulty adjustment algorithm. It returns
@@ -339,11 +376,6 @@ func (ethash *Ethash) CalcDifficulty(chain consensus.ChainHeaderReader, time uin
 func CalcDifficulty(config *params.ChainConfig, time uint64, parent *types.Header) *big.Int {
 	next := new(big.Int).Add(parent.Number, big1)
 	switch {
-	case config.IsEthPoWFork(next):
-		if config.EthPoWForkBlock.Cmp(next) == 0 {
-			return params.ETHWStartDifficulty //Reset difficulty
-		}
-		return calcDifficultyEthPoW(time, parent)
 	case config.IsGrayGlacier(next):
 		return calcDifficultyEip5133(time, parent)
 	case config.IsArrowGlacier(next):

@@ -55,28 +55,32 @@ var CheckpointOracles = map[common.Hash]*CheckpointOracleConfig{
 }
 
 var (
+	MainnetTerminalTotalDifficulty, _ = new(big.Int).SetString("58_750_000_000_000_000_000_000", 0)
+
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(1), //10001
-		HomesteadBlock:      big.NewInt(1_150_000),
-		DAOForkBlock:        big.NewInt(1_920_000),
-		DAOForkSupport:      true,
-		EIP150Block:         big.NewInt(2_463_000),
-		EIP150Hash:          common.HexToHash("0x2086799aeebeae135c246c65021c82b4e15a2c451340993aacfd2751886514f0"),
-		EIP155Block:         big.NewInt(2_675_000),
-		EIP158Block:         big.NewInt(2_675_000),
-		ByzantiumBlock:      big.NewInt(4_370_000),
-		ConstantinopleBlock: big.NewInt(7_280_000),
-		PetersburgBlock:     big.NewInt(7_280_000),
-		IstanbulBlock:       big.NewInt(9_069_000),
-		MuirGlacierBlock:    big.NewInt(9_200_000),
-		BerlinBlock:         big.NewInt(12_244_000),
-		LondonBlock:         big.NewInt(12_965_000),
-		ArrowGlacierBlock:   big.NewInt(13_773_000),
-		GrayGlacierBlock:    big.NewInt(15_050_000),
-		EthPoWForkBlock:     big.NewInt(16_000_000),
-		EthPoWForkSupport:   true,
-		Ethash:              new(EthashConfig),
+		ChainID:               big.NewInt(1), //10001
+		HomesteadBlock:        big.NewInt(1_150_000),
+		DAOForkBlock:          big.NewInt(1_920_000),
+		DAOForkSupport:        true,
+		EIP150Block:           big.NewInt(2_463_000),
+		EIP150Hash:            common.HexToHash("0x2086799aeebeae135c246c65021c82b4e15a2c451340993aacfd2751886514f0"),
+		EIP155Block:           big.NewInt(2_675_000),
+		EIP158Block:           big.NewInt(2_675_000),
+		ByzantiumBlock:        big.NewInt(4_370_000),
+		ConstantinopleBlock:   big.NewInt(7_280_000),
+		PetersburgBlock:       big.NewInt(7_280_000),
+		IstanbulBlock:         big.NewInt(9_069_000),
+		MuirGlacierBlock:      big.NewInt(9_200_000),
+		BerlinBlock:           big.NewInt(12_244_000),
+		LondonBlock:           big.NewInt(12_965_000),
+		ArrowGlacierBlock:     big.NewInt(13_773_000),
+		GrayGlacierBlock:      big.NewInt(15_050_000),
+		EthPoWStartDifficulty: big.NewInt(1_099_511_627_776),
+		EthPoWTotalDifficulty: MainnetTerminalTotalDifficulty,
+		EthPoWForkBlock:       big.NewInt(16_000_000),
+		EthPoWForkSupport:     true,
+		Ethash:                new(EthashConfig),
 	}
 
 	// MainnetTrustedCheckpoint contains the light client trusted checkpoint for the main network.
@@ -159,9 +163,13 @@ var (
 		MuirGlacierBlock:              big.NewInt(0),
 		BerlinBlock:                   big.NewInt(0),
 		LondonBlock:                   big.NewInt(0),
-		TerminalTotalDifficulty:       big.NewInt(17_000_000_000_000_000),
-		TerminalTotalDifficultyPassed: true,
-		MergeNetsplitBlock:            big.NewInt(1735371),
+		EthPoWStartDifficulty:         big.NewInt(1024),
+		EthPoWTotalDifficulty:         big.NewInt(17_000_000_000_000_000),
+		EthPoWForkBlock:               big.NewInt(1450500),
+		EthPoWForkSupport:             true,
+		TerminalTotalDifficulty:       nil,
+		TerminalTotalDifficultyPassed: false,
+		MergeNetsplitBlock:            nil,
 		Ethash:                        new(EthashConfig),
 	}
 
@@ -267,16 +275,16 @@ var (
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, false, nil, false, new(EthashConfig), nil}
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, false, new(EthashConfig), nil}
 
 	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers into the Clique consensus.
 	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
-	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, false, nil, &CliqueConfig{Period: 0, Epoch: 30000}}
+	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, nil, nil, false, nil, false, nil, &CliqueConfig{Period: 0, Epoch: 30000}}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, false, nil, false, new(EthashConfig), nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, false, new(EthashConfig), nil}
 	TestRules       = TestChainConfig.Rules(new(big.Int), false)
 )
 
@@ -357,20 +365,22 @@ type ChainConfig struct {
 	EIP155Block *big.Int `json:"eip155Block,omitempty"` // EIP155 HF block
 	EIP158Block *big.Int `json:"eip158Block,omitempty"` // EIP158 HF block
 
-	ByzantiumBlock      *big.Int `json:"byzantiumBlock,omitempty"`      // Byzantium switch block (nil = no fork, 0 = already on byzantium)
-	ConstantinopleBlock *big.Int `json:"constantinopleBlock,omitempty"` // Constantinople switch block (nil = no fork, 0 = already activated)
-	PetersburgBlock     *big.Int `json:"petersburgBlock,omitempty"`     // Petersburg switch block (nil = same as Constantinople)
-	IstanbulBlock       *big.Int `json:"istanbulBlock,omitempty"`       // Istanbul switch block (nil = no fork, 0 = already on istanbul)
-	MuirGlacierBlock    *big.Int `json:"muirGlacierBlock,omitempty"`    // Eip-2384 (bomb delay) switch block (nil = no fork, 0 = already activated)
-	BerlinBlock         *big.Int `json:"berlinBlock,omitempty"`         // Berlin switch block (nil = no fork, 0 = already on berlin)
-	LondonBlock         *big.Int `json:"londonBlock,omitempty"`         // London switch block (nil = no fork, 0 = already on london)
-	ArrowGlacierBlock   *big.Int `json:"arrowGlacierBlock,omitempty"`   // Eip-4345 (bomb delay) switch block (nil = no fork, 0 = already activated)
-	GrayGlacierBlock    *big.Int `json:"grayGlacierBlock,omitempty"`    // Eip-5133 (bomb delay) switch block (nil = no fork, 0 = already activated)
-	MergeNetsplitBlock  *big.Int `json:"mergeNetsplitBlock,omitempty"`  // Virtual fork after The Merge to use as a network splitter
-	ShanghaiBlock       *big.Int `json:"shanghaiBlock,omitempty"`       // Shanghai switch block (nil = no fork, 0 = already on shanghai)
-	CancunBlock         *big.Int `json:"cancunBlock,omitempty"`         // Cancun switch block (nil = no fork, 0 = already on cancun)
-	EthPoWForkBlock     *big.Int `json:"ethPoWForkBlock,omitempty"`     //EthPoW hard-fork switch block (nil = no fork)
-	EthPoWForkSupport   bool     `json:"ethPoWForkSupport,omitempty"`   // Whether the nodes supports or opposes the EthPoW hard-fork
+	ByzantiumBlock        *big.Int `json:"byzantiumBlock,omitempty"`        // Byzantium switch block (nil = no fork, 0 = already on byzantium)
+	ConstantinopleBlock   *big.Int `json:"constantinopleBlock,omitempty"`   // Constantinople switch block (nil = no fork, 0 = already activated)
+	PetersburgBlock       *big.Int `json:"petersburgBlock,omitempty"`       // Petersburg switch block (nil = same as Constantinople)
+	IstanbulBlock         *big.Int `json:"istanbulBlock,omitempty"`         // Istanbul switch block (nil = no fork, 0 = already on istanbul)
+	MuirGlacierBlock      *big.Int `json:"muirGlacierBlock,omitempty"`      // Eip-2384 (bomb delay) switch block (nil = no fork, 0 = already activated)
+	BerlinBlock           *big.Int `json:"berlinBlock,omitempty"`           // Berlin switch block (nil = no fork, 0 = already on berlin)
+	LondonBlock           *big.Int `json:"londonBlock,omitempty"`           // London switch block (nil = no fork, 0 = already on london)
+	ArrowGlacierBlock     *big.Int `json:"arrowGlacierBlock,omitempty"`     // Eip-4345 (bomb delay) switch block (nil = no fork, 0 = already activated)
+	GrayGlacierBlock      *big.Int `json:"grayGlacierBlock,omitempty"`      // Eip-5133 (bomb delay) switch block (nil = no fork, 0 = already activated)
+	MergeNetsplitBlock    *big.Int `json:"mergeNetsplitBlock,omitempty"`    // Virtual fork after The Merge to use as a network splitter
+	ShanghaiBlock         *big.Int `json:"shanghaiBlock,omitempty"`         // Shanghai switch block (nil = no fork, 0 = already on shanghai)
+	CancunBlock           *big.Int `json:"cancunBlock,omitempty"`           // Cancun switch block (nil = no fork, 0 = already on cancun)
+	EthPoWStartDifficulty *big.Int `json:"ethPoWStartDifficulty,omitempty"` // Static diff for EthPoW
+	EthPoWTotalDifficulty *big.Int `json:"ethPoWTotalDifficulty,omitempty"` // EthPoW diff switch block (nil = no fork)
+	EthPoWForkBlock       *big.Int `json:"ethPoWForkBlock,omitempty"`       // EthPoW hard-fork switch block (nil = no fork)
+	EthPoWForkSupport     bool     `json:"ethPoWForkSupport,omitempty"`     // Whether the nodes supports or opposes the EthPoW hard-fork
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
 	TerminalTotalDifficulty *big.Int `json:"terminalTotalDifficulty,omitempty"`
@@ -477,6 +487,10 @@ func (c *ChainConfig) String() string {
 	if c.TerminalTotalDifficulty == nil {
 		banner += "The Merge is not yet available for this network!\n"
 		banner += " - Hard-fork specification: https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/paris.md)"
+	} else if c.EthPoWTotalDifficulty != nil {
+		banner += "EthereumPoW supporting node\n"
+		banner += fmt.Sprintf(" - Total pow difficulty:          %v\n", c.EthPoWTotalDifficulty)
+		banner += fmt.Sprintf(" - EthereumPoW fork enable block: %-8v", c.EthPoWForkBlock)
 	} else {
 		banner += "Merge configured:\n"
 		banner += " - Hard-fork specification:    https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/paris.md)\n"
