@@ -67,7 +67,7 @@ func TestWaitDeployed(t *testing.T) {
 		gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
 
 		tx := types.NewContractCreation(0, big.NewInt(0), test.gas, gasPrice, common.FromHex(test.code))
-		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, new(big.Int), testKey)
 
 		// Wait for it to get mined in the background.
 		var (
@@ -114,7 +114,7 @@ func TestWaitDeployedCornerCases(t *testing.T) {
 	// Create a transaction to an account.
 	code := "6060604052600a8060106000396000f360606040526008565b00"
 	tx := types.NewTransaction(0, common.HexToAddress("0x01"), big.NewInt(0), 3000000, gasPrice, common.FromHex(code))
-	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, new(big.Int), testKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	backend.SendTransaction(ctx, tx)
@@ -126,7 +126,7 @@ func TestWaitDeployedCornerCases(t *testing.T) {
 
 	// Create a transaction that is not mined.
 	tx = types.NewContractCreation(1, big.NewInt(0), 3000000, gasPrice, common.FromHex(code))
-	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, new(big.Int), testKey)
 
 	go func() {
 		contextCanceled := errors.New("context canceled")

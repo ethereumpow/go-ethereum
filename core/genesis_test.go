@@ -30,14 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-func TestInvalidCliqueConfig(t *testing.T) {
-	block := DefaultGoerliGenesisBlock()
-	block.ExtraData = []byte{}
-	if _, err := block.Commit(nil); err == nil {
-		t.Fatal("Expected error on invalid clique config")
-	}
-}
-
 func TestSetupGenesis(t *testing.T) {
 	var (
 		customghash = common.HexToHash("0x89c99d90b79719238d2645c7642f2c9295246e80775b38cfd162b696817fbd50")
@@ -178,7 +170,7 @@ func TestGenesisHashes(t *testing.T) {
 			t.Errorf("case: %d a), want: %s, got: %s", i, c.want.Hex(), have.Hex())
 		}
 		// Test via ToBlock
-		if have := c.genesis.ToBlock().Hash(); have != c.want {
+		if have := c.genesis.ToBlock(nil).Hash(); have != c.want {
 			t.Errorf("case: %d a), want: %s, got: %s", i, c.want.Hex(), have.Hex())
 		}
 	}
@@ -192,7 +184,11 @@ func TestGenesis_Commit(t *testing.T) {
 	}
 
 	db := rawdb.NewMemoryDatabase()
-	genesisBlock := genesis.MustCommit(db)
+	genesisBlock, err := genesis.Commit(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if genesis.Difficulty != nil {
 		t.Fatalf("assumption wrong")
 	}
@@ -217,12 +213,12 @@ func TestReadWriteGenesisAlloc(t *testing.T) {
 			{1}: {Balance: big.NewInt(1), Storage: map[common.Hash]common.Hash{{1}: {1}}},
 			{2}: {Balance: big.NewInt(2), Storage: map[common.Hash]common.Hash{{2}: {2}}},
 		}
-		hash, _ = alloc.deriveHash()
+		hash = common.HexToHash("0xdeadbeef")
 	)
-	alloc.flush(db)
+	alloc.write(db, hash)
 
 	var reload GenesisAlloc
-	err := reload.UnmarshalJSON(rawdb.ReadGenesisStateSpec(db, hash))
+	err := reload.UnmarshalJSON(rawdb.ReadGenesisState(db, hash))
 	if err != nil {
 		t.Fatalf("Failed to load genesis state %v", err)
 	}

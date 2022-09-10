@@ -285,7 +285,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		config:          config,
 		chainconfig:     chainconfig,
 		chain:           chain,
-		signer:          types.LatestSigner(chainconfig),
+		signer:          types.LatestSigner(chainconfig, chain.CurrentBlock().Number()),
 		pending:         make(map[common.Address]*txList),
 		queue:           make(map[common.Address]*txList),
 		beats:           make(map[common.Address]time.Time),
@@ -584,6 +584,8 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
+	blockNumber := pool.chain.CurrentBlock().Number()
+
 	// Accept only legacy transactions until EIP-2718/2930 activates.
 	if !pool.eip2718 && tx.Type() != types.LegacyTxType {
 		return ErrTxTypeNotSupported
@@ -617,7 +619,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		return ErrTipAboveFeeCap
 	}
 	// Make sure the transaction is signed properly.
-	from, err := types.Sender(pool.signer, tx)
+	from, err := types.Sender(pool.signer, tx, blockNumber)
 	if err != nil {
 		return ErrInvalidSender
 	}
@@ -660,9 +662,11 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
 	}
+	blockNumber := pool.chain.CurrentBlock().Number()
+
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
-	isLocal := local || pool.locals.containsTx(tx)
+	isLocal := local || pool.locals.containsTx(tx, blockNumber)
 
 	// If the transaction fails basic validation, discard it
 	if err := pool.validateTx(tx, isLocal); err != nil {
@@ -708,7 +712,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		}
 	}
 	// Try to replace an existing transaction in the pending pool
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	from, _ := types.Sender(pool.signer, tx, blockNumber) // already validated
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
 		// Nonce already pending, check if required price bump is met
 		inserted, old := list.Add(tx, pool.config.PriceBump)
@@ -741,7 +745,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	if local && !pool.locals.contains(from) {
 		log.Info("Setting new local account", "address", from)
 		pool.locals.add(from)
-		pool.priced.Removed(pool.all.RemoteToLocals(pool.locals)) // Migrate the remotes if it's marked as local first time.
+		pool.priced.Removed(pool.all.RemoteToLocals(pool.locals, blockNumber)) // Migrate the remotes if it's marked as local first time.
 	}
 	if isLocal {
 		localGauge.Inc(1)
@@ -757,7 +761,9 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 // Note, this method assumes the pool lock is held!
 func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction, local bool, addAll bool) (bool, error) {
 	// Try to insert the transaction into the future queue
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	blockNumber := pool.chain.CurrentBlock().Number()
+
+	from, _ := types.Sender(pool.signer, tx, blockNumber) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
 	}
@@ -892,6 +898,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		errs = make([]error, len(txs))
 		news = make([]*types.Transaction, 0, len(txs))
 	)
+	blockNumber := pool.chain.CurrentBlock().Number()
 	for i, tx := range txs {
 		// If the transaction is known, pre-set the error slot
 		if pool.all.Get(tx.Hash()) != nil {
@@ -902,7 +909,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
-		_, err := types.Sender(pool.signer, tx)
+		_, err := types.Sender(pool.signer, tx, blockNumber)
 		if err != nil {
 			errs[i] = ErrInvalidSender
 			invalidTxMeter.Mark(1)
@@ -917,7 +924,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 
 	// Process all the new transaction and merge any errors into the original slice
 	pool.mu.Lock()
-	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
+	newErrs, dirtyAddrs := pool.addTxsLocked(news, local, blockNumber)
 	pool.mu.Unlock()
 
 	var nilSlot = 0
@@ -938,14 +945,14 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 
 // addTxsLocked attempts to queue a batch of transactions if they are valid.
 // The transaction pool lock must be held.
-func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
+func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool, blockNumber *big.Int) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
 		if err == nil && !replaced {
-			dirty.addTx(tx)
+			dirty.addTx(tx, blockNumber)
 		}
 	}
 	validTxMeter.Mark(int64(len(dirty.accounts)))
@@ -956,12 +963,13 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error,
 // identified by their hashes.
 func (pool *TxPool) Status(hashes []common.Hash) []TxStatus {
 	status := make([]TxStatus, len(hashes))
+	blockNumber := pool.chain.CurrentBlock().Number()
 	for i, hash := range hashes {
 		tx := pool.Get(hash)
 		if tx == nil {
 			continue
 		}
-		from, _ := types.Sender(pool.signer, tx) // already validated
+		from, _ := types.Sender(pool.signer, tx, blockNumber) // already validated
 		pool.mu.RLock()
 		if txList := pool.pending[from]; txList != nil && txList.txs.items[tx.Nonce()] != nil {
 			status[i] = TxStatusPending
@@ -994,7 +1002,9 @@ func (pool *TxPool) removeTx(hash common.Hash, outofbound bool) {
 	if tx == nil {
 		return
 	}
-	addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
+	blockNumber := pool.chain.CurrentBlock().Number()
+
+	addr, _ := types.Sender(pool.signer, tx, blockNumber) // already validated during insertion
 
 	// Remove it from the list of known transactions
 	pool.all.Remove(hash)
@@ -1118,7 +1128,8 @@ func (pool *TxPool) scheduleReorgLoop() {
 		case tx := <-pool.queueTxEventCh:
 			// Queue up the event, but don't schedule a reorg. It's up to the caller to
 			// request one later if they want the events sent.
-			addr, _ := types.Sender(pool.signer, tx)
+			blockNumber := pool.chain.CurrentBlock().Number()
+			addr, _ := types.Sender(pool.signer, tx, blockNumber)
 			if _, ok := queuedEvents[addr]; !ok {
 				queuedEvents[addr] = newTxSortedMap()
 			}
@@ -1197,10 +1208,11 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	dropBetweenReorgHistogram.Update(int64(pool.changesSinceReorg))
 	pool.changesSinceReorg = 0 // Reset change counter
 	pool.mu.Unlock()
+	blockNumber := pool.chain.CurrentBlock().Number()
 
 	// Notify subsystems for newly added transactions
 	for _, tx := range promoted {
-		addr, _ := types.Sender(pool.signer, tx)
+		addr, _ := types.Sender(pool.signer, tx, blockNumber)
 		if _, ok := events[addr]; !ok {
 			events[addr] = newTxSortedMap()
 		}
@@ -1296,8 +1308,8 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
-	senderCacher.recover(pool.signer, reinject)
-	pool.addTxsLocked(reinject, false)
+	senderCacher.recoverWithBlockNumber(pool.signer, reinject, newHead.Number)
+	pool.addTxsLocked(reinject, false, newHead.Number)
 
 	// Update all fork indicator by next pending block number.
 	next := new(big.Int).Add(newHead.Number, big.NewInt(1))
@@ -1459,7 +1471,7 @@ func (pool *TxPool) truncatePending() {
 	pendingRateLimitMeter.Mark(int64(pendingBeforeCap - pending))
 }
 
-// truncateQueue drops the oldest transactions in the queue if the pool is above the global queue limit.
+// truncateQueue drops the oldes transactions in the queue if the pool is above the global queue limit.
 func (pool *TxPool) truncateQueue() {
 	queued := uint64(0)
 	for _, list := range pool.queue {
@@ -1603,10 +1615,14 @@ func (as *accountSet) contains(addr common.Address) bool {
 	return exist
 }
 
+func (as *accountSet) empty() bool {
+	return len(as.accounts) == 0
+}
+
 // containsTx checks if the sender of a given tx is within the set. If the sender
 // cannot be derived, this method returns false.
-func (as *accountSet) containsTx(tx *types.Transaction) bool {
-	if addr, err := types.Sender(as.signer, tx); err == nil {
+func (as *accountSet) containsTx(tx *types.Transaction, blockNumber *big.Int) bool {
+	if addr, err := types.Sender(as.signer, tx, blockNumber); err == nil {
 		return as.contains(addr)
 	}
 	return false
@@ -1619,8 +1635,8 @@ func (as *accountSet) add(addr common.Address) {
 }
 
 // addTx adds the sender of tx into the set.
-func (as *accountSet) addTx(tx *types.Transaction) {
-	if addr, err := types.Sender(as.signer, tx); err == nil {
+func (as *accountSet) addTx(tx *types.Transaction, blockNumber *big.Int) {
+	if addr, err := types.Sender(as.signer, tx, blockNumber); err == nil {
 		as.add(addr)
 	}
 }
@@ -1792,13 +1808,13 @@ func (t *txLookup) Remove(hash common.Hash) {
 
 // RemoteToLocals migrates the transactions belongs to the given locals to locals
 // set. The assumption is held the locals set is thread-safe to be used.
-func (t *txLookup) RemoteToLocals(locals *accountSet) int {
+func (t *txLookup) RemoteToLocals(locals *accountSet, blockNumber *big.Int) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	var migrated int
 	for hash, tx := range t.remotes {
-		if locals.containsTx(tx) {
+		if locals.containsTx(tx, blockNumber) {
 			t.locals[hash] = tx
 			delete(t.remotes, hash)
 			migrated += 1

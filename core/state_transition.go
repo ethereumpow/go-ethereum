@@ -344,23 +344,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if rules.IsLondon {
 		effectiveTip = cmath.BigMin(st.gasTipCap, new(big.Int).Sub(st.gasFeeCap, st.evm.Context.BaseFee))
 	}
-
-	if st.evm.Config.NoBaseFee && st.gasFeeCap.Sign() == 0 && st.gasTipCap.Sign() == 0 {
-		// Skip fee payment when NoBaseFee is set and the fee fields
-		// are 0. This avoids a negative effectiveTip being applied to
-		// the coinbase when simulating calls.
-	} else {
-		fee := new(big.Int).SetUint64(st.gasUsed())
-		fee.Mul(fee, effectiveTip)
-		st.state.AddBalance(st.evm.Context.Coinbase, fee)
-		// add pow fork check & change state root after ethw fork.
-		// thx twitter @z_j_s ^_^ reported it
-		if rules.IsEthPoWFork {
-			remainGas := new(big.Int).Sub(st.gasPrice, effectiveTip)
-			remainGas.Mul(remainGas, new(big.Int).SetUint64(st.gasUsed()))
-			st.state.AddBalance(params.MinerDAOAddress, cmath.BigMax(new(big.Int), remainGas))
-		}
-	}
+	st.state.AddBalance(st.evm.Context.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip))
 
 	return &ExecutionResult{
 		UsedGas:    st.gasUsed(),

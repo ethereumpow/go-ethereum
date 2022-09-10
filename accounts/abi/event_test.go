@@ -161,6 +161,7 @@ func TestEventMultiValueWithArrayUnpack(t *testing.T) {
 }
 
 func TestEventTupleUnpack(t *testing.T) {
+
 	type EventTransfer struct {
 		Value *big.Int
 	}

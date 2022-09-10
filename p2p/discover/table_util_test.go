@@ -134,8 +134,8 @@ func newPingRecorder() *pingRecorder {
 	}
 }
 
-// updateRecord updates a node record. Future calls to ping and
-// RequestENR will return this record.
+// setRecord updates a node record. Future calls to ping and
+// requestENR will return this record.
 func (t *pingRecorder) updateRecord(n *enode.Node) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -162,7 +162,7 @@ func (t *pingRecorder) ping(n *enode.Node) (seq uint64, err error) {
 	return seq, nil
 }
 
-// RequestENR simulates an ENR request.
+// requestENR simulates an ENR request.
 func (t *pingRecorder) RequestENR(n *enode.Node) (*enode.Node, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

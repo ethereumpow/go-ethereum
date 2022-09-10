@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,19 +32,35 @@ import (
 	"github.com/ethereum/go-ethereum/tests"
 )
 
+// callTrace is the result of a callTracer run.
+type callTrace struct {
+	Type    string          `json:"type"`
+	From    common.Address  `json:"from"`
+	To      common.Address  `json:"to"`
+	Input   hexutil.Bytes   `json:"input"`
+	Output  hexutil.Bytes   `json:"output"`
+	Gas     *hexutil.Uint64 `json:"gas,omitempty"`
+	GasUsed *hexutil.Uint64 `json:"gasUsed,omitempty"`
+	Value   *hexutil.Big    `json:"value,omitempty"`
+	Error   string          `json:"error,omitempty"`
+	Calls   []callTrace     `json:"calls,omitempty"`
+}
+
 func BenchmarkTransactionTrace(b *testing.B) {
 	key, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	from := crypto.PubkeyToAddress(key.PublicKey)
 	gas := uint64(1000000) // 1M gas
 	to := common.HexToAddress("0x00000000000000000000000000000000deadbeef")
-	signer := types.LatestSignerForChainID(big.NewInt(1337))
+	signer := types.LatestSignerForChainID(func(b *big.Int) *big.Int {
+		return big.NewInt(1337)
+	})
 	tx, err := types.SignNewTx(key, signer,
 		&types.LegacyTx{
 			Nonce:    1,
 			GasPrice: big.NewInt(500),
 			Gas:      gas,
 			To:       &to,
-		})
+		}, new(big.Int))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -88,7 +105,7 @@ func BenchmarkTransactionTrace(b *testing.B) {
 		//EnableReturnData: false,
 	})
 	evm := vm.NewEVM(context, txContext, statedb, params.AllEthashProtocolChanges, vm.Config{Debug: true, Tracer: tracer})
-	msg, err := tx.AsMessage(signer, nil)
+	msg, err := tx.AsMessage(signer, nil, new(big.Int))
 	if err != nil {
 		b.Fatalf("failed to prepare transaction for tracing: %v", err)
 	}

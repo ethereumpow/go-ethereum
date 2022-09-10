@@ -375,7 +375,8 @@ func (it *nodeIterator) resolveHash(hash hashNode, path []byte) (node, error) {
 			}
 		}
 	}
-	return it.trie.resolveHash(hash, path)
+	resolved, err := it.trie.resolveHash(hash, path)
+	return resolved, err
 }
 
 func (it *nodeIterator) resolveBlob(hash hashNode, path []byte) ([]byte, error) {

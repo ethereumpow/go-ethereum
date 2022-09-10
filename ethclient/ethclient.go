@@ -165,7 +165,7 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 	txs := make([]*types.Transaction, len(body.Transactions))
 	for i, tx := range body.Transactions {
 		if tx.From != nil {
-			setSenderFromServer(tx.tx, *tx.From, body.Hash)
+			setSenderFromServer(tx.tx, *tx.From, body.Hash, head.Number)
 		}
 		txs[i] = tx.tx
 	}
@@ -222,9 +222,6 @@ func (ec *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *
 	} else if _, r, _ := json.tx.RawSignatureValues(); r == nil {
 		return nil, false, fmt.Errorf("server returned transaction without signature")
 	}
-	if json.From != nil && json.BlockHash != nil {
-		setSenderFromServer(json.tx, *json.From, *json.BlockHash)
-	}
 	return json.tx, json.BlockNumber == nil, nil
 }
 
@@ -235,18 +232,13 @@ func (ec *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *
 // There is a fast-path for transactions retrieved by TransactionByHash and
 // TransactionInBlock. Getting their sender address can be done without an RPC interaction.
 func (ec *Client) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
-	// Try to load the address from the cache.
-	sender, err := types.Sender(&senderFromServer{blockhash: block}, tx)
-	if err == nil {
-		return sender, nil
-	}
 
 	// It was not found in cache, ask the server.
 	var meta struct {
 		Hash common.Hash
 		From common.Address
 	}
-	if err = ec.c.CallContext(ctx, &meta, "eth_getTransactionByBlockHashAndIndex", block, hexutil.Uint64(index)); err != nil {
+	if err := ec.c.CallContext(ctx, &meta, "eth_getTransactionByBlockHashAndIndex", block, hexutil.Uint64(index)); err != nil {
 		return common.Address{}, err
 	}
 	if meta.Hash == (common.Hash{}) || meta.Hash != tx.Hash() {
@@ -273,9 +265,6 @@ func (ec *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash,
 		return nil, ethereum.NotFound
 	} else if _, r, _ := json.tx.RawSignatureValues(); r == nil {
 		return nil, fmt.Errorf("server returned transaction without signature")
-	}
-	if json.From != nil && json.BlockHash != nil {
-		setSenderFromServer(json.tx, *json.From, *json.BlockHash)
 	}
 	return json.tx, err
 }
@@ -503,38 +492,6 @@ func (ec *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return (*big.Int)(&hex), nil
-}
-
-type feeHistoryResultMarshaling struct {
-	OldestBlock  *hexutil.Big     `json:"oldestBlock"`
-	Reward       [][]*hexutil.Big `json:"reward,omitempty"`
-	BaseFee      []*hexutil.Big   `json:"baseFeePerGas,omitempty"`
-	GasUsedRatio []float64        `json:"gasUsedRatio"`
-}
-
-// FeeHistory retrieves the fee market history.
-func (ec *Client) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
-	var res feeHistoryResultMarshaling
-	if err := ec.c.CallContext(ctx, &res, "eth_feeHistory", hexutil.Uint(blockCount), toBlockNumArg(lastBlock), rewardPercentiles); err != nil {
-		return nil, err
-	}
-	reward := make([][]*big.Int, len(res.Reward))
-	for i, r := range res.Reward {
-		reward[i] = make([]*big.Int, len(r))
-		for j, r := range r {
-			reward[i][j] = (*big.Int)(r)
-		}
-	}
-	baseFee := make([]*big.Int, len(res.BaseFee))
-	for i, b := range res.BaseFee {
-		baseFee[i] = (*big.Int)(b)
-	}
-	return &ethereum.FeeHistory{
-		OldestBlock:  (*big.Int)(res.OldestBlock),
-		Reward:       reward,
-		BaseFee:      baseFee,
-		GasUsedRatio: res.GasUsedRatio,
-	}, nil
 }
 
 // EstimateGas tries to estimate the gas needed to execute a specific transaction based on

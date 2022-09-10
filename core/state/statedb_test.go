@@ -699,6 +699,7 @@ func TestDeleteCreateRevert(t *testing.T) {
 // the Commit operation fails with an error
 // If we are missing trie nodes, we should not continue writing to the trie
 func TestMissingTrieNodes(t *testing.T) {
+
 	// Create an initial state with a few accounts
 	memDb := rawdb.NewMemoryDatabase()
 	db := NewDatabase(memDb)

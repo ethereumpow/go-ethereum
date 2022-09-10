@@ -63,9 +63,12 @@ func TestDatadirCreation(t *testing.T) {
 	}()
 
 	dir = filepath.Join(file.Name(), "invalid/path")
-	_, err = New(&Config{DataDir: dir})
+	node, err = New(&Config{DataDir: dir})
 	if err == nil {
 		t.Fatalf("protocol stack created with an invalid datadir")
+		if err := node.Close(); err != nil {
+			t.Fatalf("failed to close node: %v", err)
+		}
 	}
 }
 
@@ -115,7 +118,7 @@ func TestNodeKeyPersistency(t *testing.T) {
 	}
 	config := &Config{Name: "unit-test", DataDir: dir, P2P: p2p.Config{PrivateKey: key}}
 	config.NodeKey()
-	if _, err := os.Stat(keyfile); err == nil {
+	if _, err := os.Stat(filepath.Join(keyfile)); err == nil {
 		t.Fatalf("one-shot node key persisted to data directory")
 	}
 
@@ -136,7 +139,7 @@ func TestNodeKeyPersistency(t *testing.T) {
 	// Configure a new node and ensure the previously persisted key is loaded
 	config = &Config{Name: "unit-test", DataDir: dir}
 	config.NodeKey()
-	blob2, err := os.ReadFile(keyfile)
+	blob2, err := os.ReadFile(filepath.Join(keyfile))
 	if err != nil {
 		t.Fatalf("failed to read previously persisted node key: %v", err)
 	}

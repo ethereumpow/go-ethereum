@@ -30,6 +30,8 @@ var MainnetBootnodes = []string{
 	"enode://5d6d7cd20d6da4bb83a1d28cadb5d409b64edf314c0335df658c1a54e32c7c4a7ab7823d57c39b6a757556e68ff1df17c748b698544a55cb488b52479a92b60f@104.42.217.25:30303",   // bootnode-azure-westus-001
 	"enode://2b252ab6a1d0f971d9722cb839a42cb81db019ba44c08754628ab4a823487071b5695317c8ccd085219c3a03af063495b2f1da8d18218da2d6a82981b45e6ffc@65.108.70.101:30303",   // bootnode-hetzner-hel
 	"enode://4aeb4ab6c14b23e2c4cfdce879c04b0748a20d8e9b59e25ded2a08143e265c6c25936e74cbc8e641e3312ca288673d91f2f93f8e277de3cfa444ecdaaf982052@157.90.35.166:30303",   // bootnode-hetzner-fsn
+	// FUI bootnodes
+	"enode://9c472d0274db7aefadcdcbddd7868274e3e5670b05079f761081da2e1ee7226a049d6e97390abc4cbd46cadcc6ee5129bcdd464a4405ba6a362015737398ff40@44.209.198.141:30303",
 }
 
 // RopstenBootnodes are the enode URLs of the P2P bootstrap nodes running on the
@@ -39,6 +41,11 @@ var RopstenBootnodes = []string{
 	"enode://865a63255b3bb68023b6bffd5095118fcc13e79dcf014fe4e47e065c350c7cc72af2e53eff895f11ba1bbb6a2b33271c1116ee870f266618eadfc2e78aa7349c@52.176.100.77:30303",  // US-Azure parity
 	"enode://6332792c4a00e3e4ee0926ed89e0d27ef985424d97b6a45bf0f23e51f0dcb5e66b875777506458aea7af6f9e4ffb69f43f3778ee73c81ed9d34c51c4b16b0b0f@52.232.243.152:30303", // Parity
 	"enode://94c15d1b9e2fe7ce56e458b9a3b672ef11894ddedd0c6f247e0f1d3487f52b66208fb4aeb8179fce6e3a749ea93ed147c37976d67af557508d199d9594c35f09@192.81.208.223:30303", // @gpip
+}
+
+// Powsten test network.
+var PowstenBootnodes = []string{
+	"enode://acb94f4b23133f9cffabe41a2f503f2973b40b4a96c215bb65b5b995adb2382228cfd7f247bea32f16949f4048532350c57d791d83cd56aaad6f566f99ea80f0@18.221.4.114:30303",
 }
 
 // SepoliaBootnodes are the enode URLs of the P2P bootstrap nodes running on the
@@ -116,8 +123,6 @@ func KnownDNSNetwork(genesis common.Hash, protocol string) string {
 		net = "rinkeby"
 	case GoerliGenesisHash:
 		net = "goerli"
-	case SepoliaGenesisHash:
-		net = "sepolia"
 	default:
 		return ""
 	}

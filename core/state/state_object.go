@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
@@ -50,7 +49,7 @@ func (s Storage) String() (str string) {
 }
 
 func (s Storage) Copy() Storage {
-	cpy := make(Storage, len(s))
+	cpy := make(Storage)
 	for key, value := range s {
 		cpy[key] = value
 	}
@@ -155,7 +154,7 @@ func (s *stateObject) getTrie(db Database) Trie {
 		if s.data.Root != emptyRoot && s.db.prefetcher != nil {
 			// When the miner is creating the pending state, there is no
 			// prefetcher
-			s.trie = s.db.prefetcher.trie(s.addrHash, s.data.Root)
+			s.trie = s.db.prefetcher.trie(s.data.Root)
 		}
 		if s.trie == nil {
 			var err error
@@ -296,7 +295,7 @@ func (s *stateObject) finalise(prefetch bool) {
 		}
 	}
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != emptyRoot {
-		s.db.prefetcher.prefetch(s.addrHash, s.data.Root, slotsToPrefetch)
+		s.db.prefetcher.prefetch(s.data.Root, slotsToPrefetch)
 	}
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
@@ -353,7 +352,7 @@ func (s *stateObject) updateTrie(db Database) Trie {
 		usedStorage = append(usedStorage, common.CopyBytes(key[:])) // Copy needed for closure
 	}
 	if s.db.prefetcher != nil {
-		s.db.prefetcher.used(s.addrHash, s.data.Root, usedStorage)
+		s.db.prefetcher.used(s.data.Root, usedStorage)
 	}
 	if len(s.pendingStorage) > 0 {
 		s.pendingStorage = make(Storage)
@@ -376,23 +375,23 @@ func (s *stateObject) updateRoot(db Database) {
 
 // CommitTrie the storage trie of the object to db.
 // This updates the trie root.
-func (s *stateObject) CommitTrie(db Database) (*trie.NodeSet, error) {
+func (s *stateObject) CommitTrie(db Database) (int, error) {
 	// If nothing changed, don't bother with hashing anything
 	if s.updateTrie(db) == nil {
-		return nil, nil
+		return 0, nil
 	}
 	if s.dbErr != nil {
-		return nil, s.dbErr
+		return 0, s.dbErr
 	}
 	// Track the amount of time wasted on committing the storage trie
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { s.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, nodes, err := s.trie.Commit(false)
+	root, committed, err := s.trie.Commit(nil)
 	if err == nil {
 		s.data.Root = root
 	}
-	return nodes, err
+	return committed, err
 }
 
 // AddBalance adds amount to s's balance.

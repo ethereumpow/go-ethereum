@@ -102,6 +102,7 @@ func TestFieldElementEquality(t *testing.T) {
 	if a12.equal(b12) {
 		t.Fatal("a != a + 1")
 	}
+
 }
 
 func TestFieldElementHelpers(t *testing.T) {

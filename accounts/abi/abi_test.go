@@ -1038,7 +1038,9 @@ func TestABI_EventById(t *testing.T) {
 		}
 		if event == nil {
 			t.Errorf("We should find a event for topic %s, test #%d", topicID.Hex(), testnum)
-		} else if event.ID != topicID {
+		}
+
+		if event.ID != topicID {
 			t.Errorf("Event id %s does not match topic %s, test #%d", event.ID.Hex(), topicID.Hex(), testnum)
 		}
 

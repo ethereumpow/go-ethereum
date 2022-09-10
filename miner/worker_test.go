@@ -24,10 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -53,7 +51,6 @@ var (
 	// Test chain configurations
 	testTxPoolConfig  core.TxPoolConfig
 	ethashChainConfig *params.ChainConfig
-	cliqueChainConfig *params.ChainConfig
 
 	// Test accounts
 	testBankKey, _  = crypto.GenerateKey()
@@ -78,14 +75,8 @@ func init() {
 	testTxPoolConfig.Journal = ""
 	ethashChainConfig = new(params.ChainConfig)
 	*ethashChainConfig = *params.TestChainConfig
-	cliqueChainConfig = new(params.ChainConfig)
-	*cliqueChainConfig = *params.TestChainConfig
-	cliqueChainConfig.Clique = &params.CliqueConfig{
-		Period: 10,
-		Epoch:  30000,
-	}
 
-	signer := types.LatestSigner(params.TestChainConfig)
+	signer := types.LatestSigner(params.TestChainConfig, new(big.Int))
 	tx1 := types.MustSignNewTx(testBankKey, signer, &types.AccessListTx{
 		ChainID:  params.TestChainConfig.ChainID,
 		Nonce:    0,
@@ -93,7 +84,7 @@ func init() {
 		Value:    big.NewInt(1000),
 		Gas:      params.TxGas,
 		GasPrice: big.NewInt(params.InitialBaseFee),
-	})
+	}, new(big.Int))
 	pendingTxs = append(pendingTxs, tx1)
 
 	tx2 := types.MustSignNewTx(testBankKey, signer, &types.LegacyTx{
@@ -102,7 +93,7 @@ func init() {
 		Value:    big.NewInt(1000),
 		Gas:      params.TxGas,
 		GasPrice: big.NewInt(params.InitialBaseFee),
-	})
+	}, new(big.Int))
 	newTxs = append(newTxs, tx2)
 
 	rand.Seed(time.Now().UnixNano())
@@ -113,6 +104,7 @@ type testWorkerBackend struct {
 	db         ethdb.Database
 	txPool     *core.TxPool
 	chain      *core.BlockChain
+	testTxFeed event.Feed
 	genesis    *core.Genesis
 	uncleBlock *types.Block
 }
@@ -123,13 +115,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 		Alloc:  core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}},
 	}
 
-	switch e := engine.(type) {
-	case *clique.Clique:
-		gspec.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
-		copy(gspec.ExtraData[32:32+common.AddressLength], testBankAddress.Bytes())
-		e.Authorize(testBankAddress, func(account accounts.Account, s string, data []byte) ([]byte, error) {
-			return crypto.Sign(crypto.Keccak256(data), testBankKey)
-		})
+	switch engine.(type) {
 	case *ethash.Ethash:
 	default:
 		t.Fatalf("unexpected consensus engine type: %T", engine)
@@ -191,9 +177,9 @@ func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 	var tx *types.Transaction
 	gasPrice := big.NewInt(10 * params.InitialBaseFee)
 	if creation {
-		tx, _ = types.SignTx(types.NewContractCreation(b.txPool.Nonce(testBankAddress), big.NewInt(0), testGas, gasPrice, common.FromHex(testCode)), types.HomesteadSigner{}, testBankKey)
+		tx, _ = types.SignTx(types.NewContractCreation(b.txPool.Nonce(testBankAddress), big.NewInt(0), testGas, gasPrice, common.FromHex(testCode)), types.HomesteadSigner{}, new(big.Int), testBankKey)
 	} else {
-		tx, _ = types.SignTx(types.NewTransaction(b.txPool.Nonce(testBankAddress), testUserAddress, big.NewInt(1000), params.TxGas, gasPrice, nil), types.HomesteadSigner{}, testBankKey)
+		tx, _ = types.SignTx(types.NewTransaction(b.txPool.Nonce(testBankAddress), testUserAddress, big.NewInt(1000), params.TxGas, gasPrice, nil), types.HomesteadSigner{}, new(big.Int), testBankKey)
 	}
 	return tx
 }
@@ -220,14 +206,8 @@ func testGenerateBlockAndImport(t *testing.T, isClique bool) {
 		chainConfig *params.ChainConfig
 		db          = rawdb.NewMemoryDatabase()
 	)
-	if isClique {
-		chainConfig = params.AllCliqueProtocolChanges
-		chainConfig.Clique = &params.CliqueConfig{Period: 1, Epoch: 30000}
-		engine = clique.New(chainConfig.Clique, db)
-	} else {
-		chainConfig = params.AllEthashProtocolChanges
-		engine = ethash.NewFaker()
-	}
+	chainConfig = params.AllEthashProtocolChanges
+	engine = ethash.NewFaker()
 
 	chainConfig.LondonBlock = big.NewInt(0)
 	w, b := newTestWorker(t, chainConfig, engine, db, 0)
@@ -271,9 +251,6 @@ func testGenerateBlockAndImport(t *testing.T, isClique bool) {
 
 func TestEmptyWorkEthash(t *testing.T) {
 	testEmptyWork(t, ethashChainConfig, ethash.NewFaker())
-}
-func TestEmptyWorkClique(t *testing.T) {
-	testEmptyWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
 
 func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
@@ -376,10 +353,6 @@ func TestRegenerateMiningBlockEthash(t *testing.T) {
 	testRegenerateMiningBlock(t, ethashChainConfig, ethash.NewFaker())
 }
 
-func TestRegenerateMiningBlockClique(t *testing.T) {
-	testRegenerateMiningBlock(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
-}
-
 func testRegenerateMiningBlock(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
 	defer engine.Close()
 
@@ -434,10 +407,6 @@ func testRegenerateMiningBlock(t *testing.T, chainConfig *params.ChainConfig, en
 
 func TestAdjustIntervalEthash(t *testing.T) {
 	testAdjustInterval(t, ethashChainConfig, ethash.NewFaker())
-}
-
-func TestAdjustIntervalClique(t *testing.T) {
-	testAdjustInterval(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
 
 func testAdjustInterval(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
@@ -530,14 +499,9 @@ func TestGetSealingWorkEthash(t *testing.T) {
 	testGetSealingWork(t, ethashChainConfig, ethash.NewFaker(), false)
 }
 
-func TestGetSealingWorkClique(t *testing.T) {
-	testGetSealingWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()), false)
-}
-
 func TestGetSealingWorkPostMerge(t *testing.T) {
 	local := new(params.ChainConfig)
 	*local = *ethashChainConfig
-	local.TerminalTotalDifficulty = big.NewInt(0)
 	testGetSealingWork(t, local, ethash.NewFaker(), true)
 }
 
@@ -566,24 +530,13 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 		if len(block.Uncles()) != 0 {
 			t.Error("Unexpected uncle block")
 		}
-		_, isClique := engine.(*clique.Clique)
-		if !isClique {
-			if len(block.Extra()) != 0 {
-				t.Error("Unexpected extra field")
-			}
-			if block.Coinbase() != coinbase {
-				t.Errorf("Unexpected coinbase got %x want %x", block.Coinbase(), coinbase)
-			}
-		} else {
-			if block.Coinbase() != (common.Address{}) {
-				t.Error("Unexpected coinbase")
-			}
+		if len(block.Extra()) != 0 {
+			t.Error("Unexpected extra field")
 		}
-		if !isClique {
-			if block.MixDigest() != random {
-				t.Error("Unexpected mix digest")
-			}
+		if block.Coinbase() != coinbase {
+			t.Errorf("Unexpected coinbase got %x want %x", block.Coinbase(), coinbase)
 		}
+
 		if block.Nonce() != 0 {
 			t.Error("Unexpected block nonce")
 		}

@@ -26,27 +26,28 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
-	VersionCheckUrlFlag = &cli.StringFlag{
+	VersionCheckUrlFlag = cli.StringFlag{
 		Name:  "check.url",
 		Usage: "URL to use when checking vulnerabilities",
 		Value: "https://geth.ethereum.org/docs/vulnerabilities/vulnerabilities.json",
 	}
-	VersionCheckVersionFlag = &cli.StringFlag{
+	VersionCheckVersionFlag = cli.StringFlag{
 		Name:  "check.version",
 		Usage: "Version to check",
 		Value: fmt.Sprintf("Geth/v%v/%v-%v/%v",
 			params.VersionWithCommit(gitCommit, gitDate),
 			runtime.GOOS, runtime.GOARCH, runtime.Version()),
 	}
-	makecacheCommand = &cli.Command{
-		Action:    makecache,
+	makecacheCommand = cli.Command{
+		Action:    utils.MigrateFlags(makecache),
 		Name:      "makecache",
 		Usage:     "Generate ethash verification cache (for testing)",
 		ArgsUsage: "<blockNum> <outputDir>",
+		Category:  "MISCELLANEOUS COMMANDS",
 		Description: `
 The makecache command generates an ethash cache in <outputDir>.
 
@@ -54,11 +55,12 @@ This command exists to support the system testing project.
 Regular users do not need to execute it.
 `,
 	}
-	makedagCommand = &cli.Command{
-		Action:    makedag,
+	makedagCommand = cli.Command{
+		Action:    utils.MigrateFlags(makedag),
 		Name:      "makedag",
 		Usage:     "Generate ethash mining DAG (for testing)",
 		ArgsUsage: "<blockNum> <outputDir>",
+		Category:  "MISCELLANEOUS COMMANDS",
 		Description: `
 The makedag command generates an ethash DAG in <outputDir>.
 
@@ -66,40 +68,43 @@ This command exists to support the system testing project.
 Regular users do not need to execute it.
 `,
 	}
-	versionCommand = &cli.Command{
-		Action:    version,
+	versionCommand = cli.Command{
+		Action:    utils.MigrateFlags(version),
 		Name:      "version",
 		Usage:     "Print version numbers",
 		ArgsUsage: " ",
+		Category:  "MISCELLANEOUS COMMANDS",
 		Description: `
 The output of this command is supposed to be machine-readable.
 `,
 	}
-	versionCheckCommand = &cli.Command{
-		Action: versionCheck,
+	versionCheckCommand = cli.Command{
+		Action: utils.MigrateFlags(versionCheck),
 		Flags: []cli.Flag{
 			VersionCheckUrlFlag,
 			VersionCheckVersionFlag,
 		},
 		Name:      "version-check",
-		Usage:     "Checks (online) for known Geth security vulnerabilities",
+		Usage:     "Checks (online) whether the current version suffers from any known security vulnerabilities",
 		ArgsUsage: "<versionstring (optional)>",
+		Category:  "MISCELLANEOUS COMMANDS",
 		Description: `
 The version-check command fetches vulnerability-information from https://geth.ethereum.org/docs/vulnerabilities/vulnerabilities.json, 
 and displays information about any security vulnerabilities that affect the currently executing version.
 `,
 	}
-	licenseCommand = &cli.Command{
-		Action:    license,
+	licenseCommand = cli.Command{
+		Action:    utils.MigrateFlags(license),
 		Name:      "license",
 		Usage:     "Display license information",
 		ArgsUsage: " ",
+		Category:  "MISCELLANEOUS COMMANDS",
 	}
 )
 
 // makecache generates an ethash verification cache into the provided folder.
 func makecache(ctx *cli.Context) error {
-	args := ctx.Args().Slice()
+	args := ctx.Args()
 	if len(args) != 2 {
 		utils.Fatalf(`Usage: geth makecache <block number> <outputdir>`)
 	}
@@ -114,7 +119,7 @@ func makecache(ctx *cli.Context) error {
 
 // makedag generates an ethash mining DAG into the provided folder.
 func makedag(ctx *cli.Context) error {
-	args := ctx.Args().Slice()
+	args := ctx.Args()
 	if len(args) != 2 {
 		utils.Fatalf(`Usage: geth makedag <block number> <outputdir>`)
 	}

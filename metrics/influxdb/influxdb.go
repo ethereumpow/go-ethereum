@@ -98,16 +98,16 @@ func (r *reporter) makeClient() (err error) {
 }
 
 func (r *reporter) run() {
-	intervalTicker := time.NewTicker(r.interval)
-	pingTicker := time.NewTicker(time.Second * 5)
+	intervalTicker := time.Tick(r.interval)
+	pingTicker := time.Tick(time.Second * 5)
 
 	for {
 		select {
-		case <-intervalTicker.C:
+		case <-intervalTicker:
 			if err := r.send(); err != nil {
 				log.Warn("Unable to send to InfluxDB", "err", err)
 			}
-		case <-pingTicker.C:
+		case <-pingTicker:
 			_, _, err := r.client.Ping()
 			if err != nil {
 				log.Warn("Got error while sending a ping to InfluxDB, trying to recreate client", "err", err)

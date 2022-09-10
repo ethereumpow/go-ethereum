@@ -105,7 +105,7 @@ func (b *beaconBackfiller) resume() {
 		}()
 		// If the downloader fails, report an error as in beacon chain mode there
 		// should be no errors as long as the chain we're syncing to is valid.
-		if err := b.downloader.synchronise("", common.Hash{}, nil, nil, mode, true, b.started); err != nil {
+		if err := b.downloader.synchronise("", common.Hash{}, nil, mode, b.started); err != nil {
 			log.Error("Beacon backfilling failed", "err", err)
 			return
 		}
@@ -135,13 +135,6 @@ func (b *beaconBackfiller) setMode(mode SyncMode) {
 	log.Error("Downloader sync mode changed mid-run", "old", mode.String(), "new", mode.String())
 	b.suspend()
 	b.resume()
-}
-
-// SetBadBlockCallback sets the callback to run when a bad block is hit by the
-// block processor. This method is not thread safe and should be set only once
-// on startup before system events are fired.
-func (d *Downloader) SetBadBlockCallback(onBadBlock badBlockFn) {
-	d.badBlock = onBadBlock
 }
 
 // BeaconSync is the post-merge version of the chain synchronization, where the

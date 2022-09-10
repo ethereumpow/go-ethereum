@@ -38,7 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/tests"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 const (
@@ -251,21 +251,8 @@ func Transition(ctx *cli.Context) error {
 			return NewError(ErrorConfig, errors.New("EIP-1559 config but missing 'currentBaseFee' in env section"))
 		}
 	}
-	isMerged := chainConfig.TerminalTotalDifficulty != nil && chainConfig.TerminalTotalDifficulty.BitLen() == 0
 	env := prestate.Env
-	if isMerged {
-		// post-merge:
-		// - random must be supplied
-		// - difficulty must be zero
-		switch {
-		case env.Random == nil:
-			return NewError(ErrorConfig, errors.New("post-merge requires currentRandom to be defined in env"))
-		case env.Difficulty != nil && env.Difficulty.BitLen() != 0:
-			return NewError(ErrorConfig, errors.New("post-merge difficulty must be zero (or omitted) in env"))
-		}
-		prestate.Env.Difficulty = nil
-	} else if env.Difficulty == nil {
-		// pre-merge:
+	if env.Difficulty == nil {
 		// If difficulty was not provided by caller, we need to calculate it.
 		switch {
 		case env.ParentDifficulty == nil:
@@ -355,9 +342,9 @@ func signUnsignedTransactions(txs []*txWithKey, signer types.Signer) (types.Tran
 				err    error
 			)
 			if txWithKey.protected {
-				signed, err = types.SignTx(tx, signer, key)
+				signed, err = types.SignTx(tx, signer, new(big.Int), key)
 			} else {
-				signed, err = types.SignTx(tx, types.FrontierSigner{}, key)
+				signed, err = types.SignTx(tx, types.FrontierSigner{}, new(big.Int), key)
 			}
 			if err != nil {
 				return nil, NewError(ErrorJson, fmt.Errorf("tx %d: failed to sign tx: %v", i, err))

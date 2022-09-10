@@ -90,7 +90,7 @@ type TxRelayBackend interface {
 func NewTxPool(config *params.ChainConfig, chain *LightChain, relay TxRelayBackend) *TxPool {
 	pool := &TxPool{
 		config:      config,
-		signer:      types.LatestSigner(config),
+		signer:      types.LatestSigner(config, chain.CurrentHeader().Number),
 		nonce:       make(map[common.Address]uint64),
 		pending:     make(map[common.Hash]*types.Transaction),
 		mined:       make(map[common.Hash][]*types.Transaction),
@@ -343,53 +343,52 @@ func (pool *TxPool) Stats() (pending int) {
 }
 
 // validateTx checks whether a transaction is valid according to the consensus rules.
-func (pool *TxPool) validateTx(ctx context.Context, tx *types.Transaction) error {
+func (pool *TxPool) validateTx(ctx context.Context, tx *types.Transaction) (error, *big.Int) {
 	// Validate sender
 	var (
 		from common.Address
 		err  error
 	)
-
+	// Check the transaction doesn't exceed the current
+	// block limit gas.
+	header := pool.chain.GetHeaderByHash(pool.head)
 	// Validate the transaction sender and it's sig. Throw
 	// if the from fields is invalid.
-	if from, err = types.Sender(pool.signer, tx); err != nil {
-		return core.ErrInvalidSender
+	if from, err = types.Sender(pool.signer, tx, header.Number); err != nil {
+		return core.ErrInvalidSender, header.Number
 	}
 	// Last but not least check for nonce errors
 	currentState := pool.currentState(ctx)
 	if n := currentState.GetNonce(from); n > tx.Nonce() {
-		return core.ErrNonceTooLow
+		return core.ErrNonceTooLow, header.Number
 	}
 
-	// Check the transaction doesn't exceed the current
-	// block limit gas.
-	header := pool.chain.GetHeaderByHash(pool.head)
 	if header.GasLimit < tx.Gas() {
-		return core.ErrGasLimit
+		return core.ErrGasLimit, header.Number
 	}
 
 	// Transactions can't be negative. This may never happen
 	// using RLP decoded transactions but may occur if you create
 	// a transaction using the RPC for example.
 	if tx.Value().Sign() < 0 {
-		return core.ErrNegativeValue
+		return core.ErrNegativeValue, header.Number
 	}
 
 	// Transactor should have enough funds to cover the costs
 	// cost == V + GP * GL
 	if b := currentState.GetBalance(from); b.Cmp(tx.Cost()) < 0 {
-		return core.ErrInsufficientFunds
+		return core.ErrInsufficientFunds, header.Number
 	}
 
 	// Should supply enough intrinsic gas
 	gas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul)
 	if err != nil {
-		return err
+		return err, header.Number
 	}
 	if tx.Gas() < gas {
-		return core.ErrIntrinsicGas
+		return core.ErrIntrinsicGas, header.Number
 	}
-	return currentState.Error()
+	return currentState.Error(), header.Number
 }
 
 // add validates a new transaction and sets its state pending if processable.
@@ -398,9 +397,9 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 	hash := tx.Hash()
 
 	if pool.pending[hash] != nil {
-		return fmt.Errorf("known transaction (%x)", hash[:4])
+		return fmt.Errorf("Known transaction (%x)", hash[:4])
 	}
-	err := pool.validateTx(ctx, tx)
+	err, blockNumber := pool.validateTx(ctx, tx)
 	if err != nil {
 		return err
 	}
@@ -410,7 +409,7 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 
 		nonce := tx.Nonce() + 1
 
-		addr, _ := types.Sender(pool.signer, tx)
+		addr, _ := types.Sender(pool.signer, tx, blockNumber)
 		if nonce > pool.nonce[addr] {
 			pool.nonce[addr] = nonce
 		}
@@ -422,7 +421,7 @@ func (pool *TxPool) add(ctx context.Context, tx *types.Transaction) error {
 	}
 
 	// Print a log message if low enough level is set
-	log.Debug("Pooled new transaction", "hash", hash, "from", log.Lazy{Fn: func() common.Address { from, _ := types.Sender(pool.signer, tx); return from }}, "to", tx.To())
+	log.Debug("Pooled new transaction", "hash", hash, "from", log.Lazy{Fn: func() common.Address { from, _ := types.Sender(pool.signer, tx, blockNumber); return from }}, "to", tx.To())
 	return nil
 }
 
@@ -494,10 +493,12 @@ func (pool *TxPool) Content() (map[common.Address]types.Transactions, map[common
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
+	header := pool.chain.GetHeaderByHash(pool.head)
+
 	// Retrieve all the pending transactions and sort by account and by nonce
 	pending := make(map[common.Address]types.Transactions)
 	for _, tx := range pool.pending {
-		account, _ := types.Sender(pool.signer, tx)
+		account, _ := types.Sender(pool.signer, tx, header.Number)
 		pending[account] = append(pending[account], tx)
 	}
 	// There are no queued transactions in a light pool, just return an empty map
@@ -511,10 +512,12 @@ func (pool *TxPool) ContentFrom(addr common.Address) (types.Transactions, types.
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
+	header := pool.chain.GetHeaderByHash(pool.head)
+
 	// Retrieve the pending transactions and sort by nonce
 	var pending types.Transactions
 	for _, tx := range pool.pending {
-		account, _ := types.Sender(pool.signer, tx)
+		account, _ := types.Sender(pool.signer, tx, header.Number)
 		if account != addr {
 			continue
 		}

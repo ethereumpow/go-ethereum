@@ -219,6 +219,7 @@ func (ctx ppctx) fields(obj *goja.Object) []string {
 				vals = append(vals, k)
 			}
 		}
+
 	}
 	iterOwnAndConstructorKeys(ctx.vm, obj, add)
 	sort.Strings(vals)

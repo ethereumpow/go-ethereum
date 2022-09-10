@@ -20,7 +20,6 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,7 +27,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -44,7 +42,6 @@ import (
 type Node struct {
 	eventmux      *event.TypeMux
 	config        *Config
-	accman        *accounts.Manager
 	log           log.Logger
 	keyDir        string            // key store directory
 	keyDirTemp    bool              // If true, key directory will be removed by Stop
@@ -125,9 +122,6 @@ func New(conf *Config) (*Node, error) {
 	}
 	node.keyDir = keyDir
 	node.keyDirTemp = isEphem
-	// Creates an empty AccountManager with no backends. Callers (e.g. cmd/geth)
-	// are required to add the backends later on.
-	node.accman = accounts.NewManager(&accounts.Config{InsecureUnlockAllowed: conf.InsecureUnlockAllowed})
 
 	// Initialize the p2p server. This creates the node key and discovery databases.
 	node.server.Config.PrivateKey = node.config.NodeKey()
@@ -240,9 +234,6 @@ func (n *Node) doClose(errs []error) error {
 	errs = append(errs, n.closeDatabases()...)
 	n.lock.Unlock()
 
-	if err := n.accman.Close(); err != nil {
-		errs = append(errs, err)
-	}
 	if n.keyDirTemp {
 		if err := os.RemoveAll(n.keyDir); err != nil {
 			errs = append(errs, err)
@@ -353,10 +344,10 @@ func (n *Node) obtainJWTSecret(cliParam string) ([]byte, error) {
 		fileName = n.ResolvePath(datadirJWTKey)
 	}
 	// try reading from file
+	log.Debug("Reading JWT secret", "path", fileName)
 	if data, err := os.ReadFile(fileName); err == nil {
 		jwtSecret := common.FromHex(strings.TrimSpace(string(data)))
 		if len(jwtSecret) == 32 {
-			log.Info("Loaded JWT secret file", "path", fileName, "crc32", fmt.Sprintf("%#x", crc32.ChecksumIEEE(jwtSecret)))
 			return jwtSecret, nil
 		}
 		log.Error("Invalid JWT secret", "path", fileName, "length", len(jwtSecret))
@@ -644,11 +635,6 @@ func (n *Node) KeyStoreDir() string {
 	return n.keyDir
 }
 
-// AccountManager retrieves the account manager used by the protocol stack.
-func (n *Node) AccountManager() *accounts.Manager {
-	return n.accman
-}
-
 // IPCEndpoint retrieves the current IPC endpoint used by the protocol stack.
 func (n *Node) IPCEndpoint() string {
 	return n.ipc.endpoint
@@ -703,7 +689,7 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 // also attaching a chain freezer to it that moves ancient chain data from the
 // database to immutable append-only files. If the node is an ephemeral one, a
 // memory database is returned.
-func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
+func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, freezer, namespace string, readonly bool) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if n.state == closedState {
@@ -715,7 +701,14 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 	if n.config.DataDir == "" {
 		db = rawdb.NewMemoryDatabase()
 	} else {
-		db, err = rawdb.NewLevelDBDatabaseWithFreezer(n.ResolvePath(name), cache, handles, n.ResolveAncient(name, ancient), namespace, readonly)
+		root := n.ResolvePath(name)
+		switch {
+		case freezer == "":
+			freezer = filepath.Join(root, "ancient")
+		case !filepath.IsAbs(freezer):
+			freezer = n.ResolvePath(freezer)
+		}
+		db, err = rawdb.NewLevelDBDatabaseWithFreezer(root, cache, handles, freezer, namespace, readonly)
 	}
 
 	if err == nil {
@@ -727,17 +720,6 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 // ResolvePath returns the absolute path of a resource in the instance directory.
 func (n *Node) ResolvePath(x string) string {
 	return n.config.ResolvePath(x)
-}
-
-// ResolveAncient returns the absolute path of the root ancient directory.
-func (n *Node) ResolveAncient(name string, ancient string) string {
-	switch {
-	case ancient == "":
-		ancient = filepath.Join(n.ResolvePath(name), "ancient")
-	case !filepath.IsAbs(ancient):
-		ancient = n.ResolvePath(ancient)
-	}
-	return ancient
 }
 
 // closeTrackingDB wraps the Close method of a database. When the database is closed by the

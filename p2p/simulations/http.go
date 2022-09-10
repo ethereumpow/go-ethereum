@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -367,6 +366,7 @@ func (s *Server) StopMocker(w http.ResponseWriter, req *http.Request) {
 
 // GetMockerList returns a list of available mockers
 func (s *Server) GetMockers(w http.ResponseWriter, req *http.Request) {
+
 	list := GetMockerList()
 	s.JSON(w, http.StatusOK, list)
 }
@@ -441,7 +441,6 @@ func (s *Server) StreamNetworkEvents(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		for _, conn := range snap.Conns {
-			conn := conn
 			event := NewEvent(&conn)
 			if err := writeEvent(event); err != nil {
 				writeErr(err)
@@ -560,7 +559,7 @@ func (s *Server) CreateNode(w http.ResponseWriter, req *http.Request) {
 	config := &adapters.NodeConfig{}
 
 	err := json.NewDecoder(req.Body).Decode(config)
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil && err != io.EOF {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

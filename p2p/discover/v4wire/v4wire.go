@@ -86,16 +86,16 @@ type (
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
 
-	// ENRRequest queries for the remote node's record.
+	// enrRequest queries for the remote node's record.
 	ENRRequest struct {
 		Expiration uint64
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`
 	}
 
-	// ENRResponse is the reply to ENRRequest.
+	// enrResponse is the reply to enrRequest.
 	ENRResponse struct {
-		ReplyTok []byte // Hash of the ENRRequest packet.
+		ReplyTok []byte // Hash of the enrRequest packet.
 		Record   enr.Record
 		// Ignore additional fields (for forward compatibility).
 		Rest []rlp.RawValue `rlp:"tail"`

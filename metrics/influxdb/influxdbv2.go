@@ -67,20 +67,21 @@ func InfluxDBV2WithTags(r metrics.Registry, d time.Duration, endpoint string, to
 }
 
 func (r *v2Reporter) run() {
-	intervalTicker := time.NewTicker(r.interval)
-	pingTicker := time.NewTicker(time.Second * 5)
+	intervalTicker := time.Tick(r.interval)
+	pingTicker := time.Tick(time.Second * 5)
 
 	for {
 		select {
-		case <-intervalTicker.C:
+		case <-intervalTicker:
 			r.send()
-		case <-pingTicker.C:
+		case <-pingTicker:
 			_, err := r.client.Health(context.Background())
 			if err != nil {
 				log.Warn("Got error from influxdb client health check", "err", err.Error())
 			}
 		}
 	}
+
 }
 
 func (r *v2Reporter) send() {
@@ -89,6 +90,7 @@ func (r *v2Reporter) send() {
 		namespace := r.namespace
 
 		switch metric := i.(type) {
+
 		case metrics.Counter:
 			v := metric.Count()
 			l := r.cache[name]

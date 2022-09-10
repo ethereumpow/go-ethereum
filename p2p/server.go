@@ -126,7 +126,7 @@ type Config struct {
 	// Protocols should contain the protocols supported
 	// by the server. Matching protocols are launched for
 	// each peer.
-	Protocols []Protocol `toml:"-" json:"-"`
+	Protocols []Protocol `toml:"-"`
 
 	// If ListenAddr is set to a non-nil address, the server
 	// will listen for incoming connections.
@@ -135,10 +135,6 @@ type Config struct {
 	// ListenAddr field will be updated with the actual address when
 	// the server is started.
 	ListenAddr string
-
-	// If DiscAddr is set to a non-nil value, the server will use ListenAddr
-	// for TCP and DiscAddr for the UDP discovery protocol.
-	DiscAddr string
 
 	// If set to a non-nil value, the given NAT port mapper
 	// is used to make the listening port available to the
@@ -553,15 +549,7 @@ func (srv *Server) setupDiscovery() error {
 		return nil
 	}
 
-	listenAddr := srv.ListenAddr
-
-	// Use an alternate listening address for UDP if
-	// a custom discovery address is configured.
-	if srv.DiscAddr != "" {
-		listenAddr = srv.DiscAddr
-	}
-
-	addr, err := net.ResolveUDPAddr("udp", listenAddr)
+	addr, err := net.ResolveUDPAddr("udp", srv.ListenAddr)
 	if err != nil {
 		return err
 	}

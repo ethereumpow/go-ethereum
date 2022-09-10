@@ -112,22 +112,6 @@ func (t *odrTrie) TryGet(key []byte) ([]byte, error) {
 	return res, err
 }
 
-func (t *odrTrie) TryGetAccount(key []byte) (*types.StateAccount, error) {
-	key = crypto.Keccak256(key)
-	var res types.StateAccount
-	err := t.do(key, func() (err error) {
-		value, err := t.trie.TryGet(key)
-		if err != nil {
-			return err
-		}
-		if value == nil {
-			return nil
-		}
-		return rlp.DecodeBytes(value, &res)
-	})
-	return &res, err
-}
-
 func (t *odrTrie) TryUpdateAccount(key []byte, acc *types.StateAccount) error {
 	key = crypto.Keccak256(key)
 	value, err := rlp.EncodeToBytes(acc)
@@ -153,11 +137,11 @@ func (t *odrTrie) TryDelete(key []byte) error {
 	})
 }
 
-func (t *odrTrie) Commit(collectLeaf bool) (common.Hash, *trie.NodeSet, error) {
+func (t *odrTrie) Commit(onleaf trie.LeafCallback) (common.Hash, int, error) {
 	if t.trie == nil {
-		return t.id.Root, nil, nil
+		return t.id.Root, 0, nil
 	}
-	return t.trie.Commit(collectLeaf)
+	return t.trie.Commit(onleaf)
 }
 
 func (t *odrTrie) Hash() common.Hash {
@@ -185,11 +169,7 @@ func (t *odrTrie) do(key []byte, fn func() error) error {
 	for {
 		var err error
 		if t.trie == nil {
-			var owner common.Hash
-			if len(t.id.AccKey) > 0 {
-				owner = common.BytesToHash(t.id.AccKey)
-			}
-			t.trie, err = trie.New(owner, t.id.Root, trie.NewDatabase(t.db.backend.Database()))
+			t.trie, err = trie.New(t.id.Root, trie.NewDatabase(t.db.backend.Database()))
 		}
 		if err == nil {
 			err = fn()
@@ -215,11 +195,7 @@ func newNodeIterator(t *odrTrie, startkey []byte) trie.NodeIterator {
 	// Open the actual non-ODR trie if that hasn't happened yet.
 	if t.trie == nil {
 		it.do(func() error {
-			var owner common.Hash
-			if len(t.id.AccKey) > 0 {
-				owner = common.BytesToHash(t.id.AccKey)
-			}
-			t, err := trie.New(owner, t.id.Root, trie.NewDatabase(t.db.backend.Database()))
+			t, err := trie.New(t.id.Root, trie.NewDatabase(t.db.backend.Database()))
 			if err == nil {
 				it.t.trie = t
 			}

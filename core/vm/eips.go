@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 
 	"github.com/ethereum/go-ethereum/params"
@@ -99,7 +100,13 @@ func enable1344(jt *JumpTable) {
 
 // opChainID implements CHAINID opcode
 func opChainID(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	chainId, _ := uint256.FromBig(interpreter.evm.chainConfig.ChainID)
+	var chainID *big.Int
+	if interpreter.evm.chainConfig.IsPoW(interpreter.evm.Context.BlockNumber) {
+		chainID = interpreter.evm.chainConfig.PoWChainID
+	} else {
+		chainID = interpreter.evm.chainConfig.ChainID
+	}
+	chainId, _ := uint256.FromBig(chainID)
 	scope.Stack.push(chainId)
 	return nil, nil
 }

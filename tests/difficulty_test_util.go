@@ -65,4 +65,5 @@ func (test *DifficultyTest) Run(config *params.ChainConfig) error {
 			test.CurrentTimestamp, test.CurrentBlockNumber, actual, exp)
 	}
 	return nil
+
 }

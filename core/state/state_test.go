@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 type stateTest struct {
@@ -41,7 +40,7 @@ func newStateTest() *stateTest {
 
 func TestDump(t *testing.T) {
 	db := rawdb.NewMemoryDatabase()
-	sdb, _ := New(common.Hash{}, NewDatabaseWithConfig(db, &trie.Config{Preimages: true}), nil)
+	sdb, _ := New(common.Hash{}, NewDatabaseWithConfig(db, nil), nil)
 	s := &stateTest{db: db, state: sdb}
 
 	// generate a few entries

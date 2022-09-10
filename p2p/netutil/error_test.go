@@ -66,6 +66,7 @@ func TestIsPacketTooBig(t *testing.T) {
 		for i := range buf {
 			if buf[i] != byte(i) {
 				t.Fatalf("error in pattern")
+				break
 			}
 		}
 	}

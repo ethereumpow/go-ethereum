@@ -211,14 +211,6 @@ func TestT8n(t *testing.T) {
 			output: t8nOutput{result: true},
 			expOut: "exp_arrowglacier.json",
 		},
-		{ // Difficulty calculation on gray glacier
-			base: "./testdata/19",
-			input: t8nInput{
-				"alloc.json", "txs.json", "env.json", "GrayGlacier", "",
-			},
-			output: t8nOutput{result: true},
-			expOut: "exp_grayglacier.json",
-		},
 		{ // Sign unprotected (pre-EIP155) transaction
 			base: "./testdata/23",
 			input: t8nInput{
@@ -227,23 +219,8 @@ func TestT8n(t *testing.T) {
 			output: t8nOutput{result: true},
 			expOut: "exp.json",
 		},
-		{ // Test post-merge transition
-			base: "./testdata/24",
-			input: t8nInput{
-				"alloc.json", "txs.json", "env.json", "Merged", "",
-			},
-			output: t8nOutput{alloc: true, result: true},
-			expOut: "exp.json",
-		},
-		{ // Test post-merge transition where input is missing random
-			base: "./testdata/24",
-			input: t8nInput{
-				"alloc.json", "txs.json", "env-missingrandom.json", "Merged", "",
-			},
-			output:      t8nOutput{alloc: false, result: false},
-			expExitCode: 3,
-		},
 	} {
+
 		args := []string{"t8n"}
 		args = append(args, tc.output.get()...)
 		args = append(args, tc.input.get(tc.base)...)
@@ -354,6 +331,7 @@ func TestT9n(t *testing.T) {
 			expExitCode: t8ntool.ErrorIO,
 		},
 	} {
+
 		args := []string{"t9n"}
 		args = append(args, tc.input.get(tc.base)...)
 
@@ -386,7 +364,6 @@ type b11rInput struct {
 	inEnv       string
 	inOmmersRlp string
 	inTxsRlp    string
-	inClique    string
 	ethash      bool
 	ethashMode  string
 	ethashDir   string
@@ -404,10 +381,6 @@ func (args *b11rInput) get(base string) []string {
 	}
 	if opt := args.inTxsRlp; opt != "" {
 		out = append(out, "--input.txs")
-		out = append(out, fmt.Sprintf("%v/%v", base, opt))
-	}
-	if opt := args.inClique; opt != "" {
-		out = append(out, "--seal.clique")
 		out = append(out, fmt.Sprintf("%v/%v", base, opt))
 	}
 	if args.ethash {
@@ -453,16 +426,6 @@ func TestB11r(t *testing.T) {
 			},
 			expOut: "exp.json",
 		},
-		{ // clique test seal
-			base: "./testdata/21",
-			input: b11rInput{
-				inEnv:       "header.json",
-				inOmmersRlp: "ommers.json",
-				inTxsRlp:    "txs.rlp",
-				inClique:    "clique.json",
-			},
-			expOut: "exp-clique.json",
-		},
 		{ // block with ommers
 			base: "./testdata/22",
 			input: b11rInput{
@@ -473,6 +436,7 @@ func TestB11r(t *testing.T) {
 			expOut: "exp.json",
 		},
 	} {
+
 		args := []string{"b11r"}
 		args = append(args, tc.input.get(tc.base)...)
 

@@ -18,7 +18,6 @@ package abi
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -80,7 +79,7 @@ func (arguments Arguments) isTuple() bool {
 func (arguments Arguments) Unpack(data []byte) ([]interface{}, error) {
 	if len(data) == 0 {
 		if len(arguments.NonIndexed()) != 0 {
-			return nil, errors.New("abi: attempting to unmarshall an empty string while arguments are expected")
+			return nil, fmt.Errorf("abi: attempting to unmarshall an empty string while arguments are expected")
 		}
 		return make([]interface{}, 0), nil
 	}
@@ -91,11 +90,11 @@ func (arguments Arguments) Unpack(data []byte) ([]interface{}, error) {
 func (arguments Arguments) UnpackIntoMap(v map[string]interface{}, data []byte) error {
 	// Make sure map is not nil
 	if v == nil {
-		return errors.New("abi: cannot unpack into a nil map")
+		return fmt.Errorf("abi: cannot unpack into a nil map")
 	}
 	if len(data) == 0 {
 		if len(arguments.NonIndexed()) != 0 {
-			return errors.New("abi: attempting to unmarshall an empty string while arguments are expected")
+			return fmt.Errorf("abi: attempting to unmarshall an empty string while arguments are expected")
 		}
 		return nil // Nothing to unmarshal, return
 	}
@@ -117,7 +116,7 @@ func (arguments Arguments) Copy(v interface{}, values []interface{}) error {
 	}
 	if len(values) == 0 {
 		if len(arguments.NonIndexed()) != 0 {
-			return errors.New("abi: attempting to copy no values while arguments are expected")
+			return fmt.Errorf("abi: attempting to copy no values while arguments are expected")
 		}
 		return nil // Nothing to copy, return
 	}

@@ -45,10 +45,10 @@ func TestBuildSchema(t *testing.T) {
 	conf := node.DefaultConfig
 	conf.DataDir = ddir
 	stack, err := node.New(&conf)
+	defer stack.Close()
 	if err != nil {
 		t.Fatalf("could not create new node: %v", err)
 	}
-	defer stack.Close()
 	// Make sure the schema can be parsed and matched up to the object model.
 	if err := newHandler(stack, nil, []string{}, []string{}); err != nil {
 		t.Errorf("Could not construct GraphQL handler: %v", err)
@@ -313,7 +313,7 @@ func createGQLServiceWithTransactions(t *testing.T, stack *node.Node) {
 	if err != nil {
 		t.Fatalf("could not create eth backend: %v", err)
 	}
-	signer := types.LatestSigner(ethConf.Genesis.Config)
+	signer := types.LatestSigner(ethConf.Genesis.Config, new(big.Int))
 
 	legacyTx, _ := types.SignNewTx(key, signer, &types.LegacyTx{
 		Nonce:    uint64(0),
@@ -321,7 +321,7 @@ func createGQLServiceWithTransactions(t *testing.T, stack *node.Node) {
 		Value:    big.NewInt(100),
 		Gas:      50000,
 		GasPrice: big.NewInt(params.InitialBaseFee),
-	})
+	}, new(big.Int))
 	envelopTx, _ := types.SignNewTx(key, signer, &types.AccessListTx{
 		ChainID:  ethConf.Genesis.Config.ChainID,
 		Nonce:    uint64(1),
@@ -333,7 +333,7 @@ func createGQLServiceWithTransactions(t *testing.T, stack *node.Node) {
 			Address:     dad,
 			StorageKeys: []common.Hash{{0}},
 		}},
-	})
+	}, new(big.Int))
 
 	// Create some blocks and import them
 	chain, _ := core.GenerateChain(params.AllEthashProtocolChanges, ethBackend.BlockChain().Genesis(),

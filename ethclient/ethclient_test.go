@@ -195,21 +195,21 @@ var genesis = &core.Genesis{
 	BaseFee:   big.NewInt(params.InitialBaseFee),
 }
 
-var testTx1 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config), &types.LegacyTx{
+var testTx1 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config, new(big.Int)), &types.LegacyTx{
 	Nonce:    0,
 	Value:    big.NewInt(12),
 	GasPrice: big.NewInt(params.InitialBaseFee),
 	Gas:      params.TxGas,
 	To:       &common.Address{2},
-})
+}, new(big.Int))
 
-var testTx2 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config), &types.LegacyTx{
+var testTx2 = types.MustSignNewTx(testKey, types.LatestSigner(genesis.Config, new(big.Int)), &types.LegacyTx{
 	Nonce:    1,
 	Value:    big.NewInt(8),
 	GasPrice: big.NewInt(params.InitialBaseFee),
 	Gas:      params.TxGas,
 	To:       &common.Address{2},
-})
+}, new(big.Int))
 
 func newTestBackend(t *testing.T) (*node.Node, []*types.Block) {
 	// Generate test chain.
@@ -248,7 +248,7 @@ func generateTestChain() []*types.Block {
 			g.AddTx(testTx2)
 		}
 	}
-	gblock := genesis.MustCommit(db)
+	gblock := genesis.ToBlock(db)
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(genesis.Config, gblock, engine, db, 2, generate)
 	blocks = append([]*types.Block{gblock}, blocks...)
@@ -290,9 +290,6 @@ func TestEthClient(t *testing.T) {
 		},
 		"AtFunctions": {
 			func(t *testing.T) { testAtFunctions(t, client) },
-		},
-		"TransactionSender": {
-			func(t *testing.T) { testTransactionSender(t, client) },
 		},
 	}
 
@@ -508,29 +505,6 @@ func testStatusFunctions(t *testing.T, client *rpc.Client) {
 	if gasTipCap.Cmp(big.NewInt(234375000)) != 0 {
 		t.Fatalf("unexpected gas tip cap: %v", gasTipCap)
 	}
-
-	// FeeHistory
-	history, err := ec.FeeHistory(context.Background(), 1, big.NewInt(2), []float64{95, 99})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := &ethereum.FeeHistory{
-		OldestBlock: big.NewInt(2),
-		Reward: [][]*big.Int{
-			{
-				big.NewInt(234375000),
-				big.NewInt(234375000),
-			},
-		},
-		BaseFee: []*big.Int{
-			big.NewInt(765625000),
-			big.NewInt(671627818),
-		},
-		GasUsedRatio: []float64{0.008912678667376286},
-	}
-	if !reflect.DeepEqual(history, want) {
-		t.Fatalf("FeeHistory result doesn't match expected: (got: %v, want: %v)", history, want)
-	}
 }
 
 func testCallContractAtHash(t *testing.T, client *rpc.Client) {
@@ -652,46 +626,6 @@ func testAtFunctions(t *testing.T, client *rpc.Client) {
 	}
 }
 
-func testTransactionSender(t *testing.T, client *rpc.Client) {
-	ec := NewClient(client)
-	ctx := context.Background()
-
-	// Retrieve testTx1 via RPC.
-	block2, err := ec.HeaderByNumber(ctx, big.NewInt(2))
-	if err != nil {
-		t.Fatal("can't get block 1:", err)
-	}
-	tx1, err := ec.TransactionInBlock(ctx, block2.Hash(), 0)
-	if err != nil {
-		t.Fatal("can't get tx:", err)
-	}
-	if tx1.Hash() != testTx1.Hash() {
-		t.Fatalf("wrong tx hash %v, want %v", tx1.Hash(), testTx1.Hash())
-	}
-
-	// The sender address is cached in tx1, so no additional RPC should be required in
-	// TransactionSender. Ensure the server is not asked by canceling the context here.
-	canceledCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	sender1, err := ec.TransactionSender(canceledCtx, tx1, block2.Hash(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sender1 != testAddr {
-		t.Fatal("wrong sender:", sender1)
-	}
-
-	// Now try to get the sender of testTx2, which was not fetched through RPC.
-	// TransactionSender should query the server here.
-	sender2, err := ec.TransactionSender(ctx, testTx2, block2.Hash(), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sender2 != testAddr {
-		t.Fatal("wrong sender:", sender2)
-	}
-}
-
 func sendTransaction(ec *Client) error {
 	chainID, err := ec.ChainID(context.Background())
 	if err != nil {
@@ -702,14 +636,16 @@ func sendTransaction(ec *Client) error {
 		return err
 	}
 
-	signer := types.LatestSignerForChainID(chainID)
+	signer := types.LatestSignerForChainID(func(b *big.Int) *big.Int {
+		return chainID
+	})
 	tx, err := types.SignNewTx(testKey, signer, &types.LegacyTx{
 		Nonce:    nonce,
 		To:       &common.Address{2},
 		Value:    big.NewInt(1),
 		Gas:      22000,
 		GasPrice: big.NewInt(params.InitialBaseFee),
-	})
+	}, new(big.Int))
 	if err != nil {
 		return err
 	}

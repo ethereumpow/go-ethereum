@@ -307,4 +307,5 @@ func TestWalkRegistries(t *testing.T) {
 	if prefix != "prefix.prefix2." {
 		t.Fatal(prefix)
 	}
+
 }

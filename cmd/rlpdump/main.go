@@ -83,7 +83,7 @@ func main() {
 		if err != nil {
 			die(err)
 		}
-		fmt.Printf("%#x\n", data)
+		fmt.Printf("0x%x\n", data)
 		return
 	} else {
 		err := rlpToText(r, out)

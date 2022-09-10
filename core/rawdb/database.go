@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"sync/atomic"
 	"time"
 
@@ -35,14 +34,8 @@ import (
 
 // freezerdb is a database wrapper that enabled freezer data retrievals.
 type freezerdb struct {
-	ancientRoot string
 	ethdb.KeyValueStore
 	ethdb.AncientStore
-}
-
-// AncientDatadir returns the path of root ancient directory.
-func (frdb *freezerdb) AncientDatadir() (string, error) {
-	return frdb.ancientRoot, nil
 }
 
 // Close implements io.Closer, closing both the fast key-value store as well as
@@ -169,36 +162,12 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 	return &nofreezedb{KeyValueStore: db}
 }
 
-// resolveChainFreezerDir is a helper function which resolves the absolute path
-// of chain freezer by considering backward compatibility.
-func resolveChainFreezerDir(ancient string) string {
-	// Check if the chain freezer is already present in the specified
-	// sub folder, if not then two possibilities:
-	// - chain freezer is not initialized
-	// - chain freezer exists in legacy location (root ancient folder)
-	freezer := path.Join(ancient, chainFreezerName)
-	if !common.FileExist(freezer) {
-		if !common.FileExist(ancient) {
-			// The entire ancient store is not initialized, still use the sub
-			// folder for initialization.
-		} else {
-			// Ancient root is already initialized, then we hold the assumption
-			// that chain freezer is also initialized and located in root folder.
-			// In this case fallback to legacy location.
-			freezer = ancient
-			log.Info("Found legacy ancient chain path", "location", ancient)
-		}
-	}
-	return freezer
-}
-
 // NewDatabaseWithFreezer creates a high level database on top of a given key-
 // value data store with a freezer moving immutable chain segments into cold
-// storage. The passed ancient indicates the path of root ancient directory
-// where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
+// storage.
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(resolveChainFreezerDir(ancient), namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := newChainFreezer(freezer, namespace, readonly, freezerTableSize, FreezerNoSnappy)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +198,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// If the freezer already contains something, ensure that the genesis blocks
 			// match, otherwise we might mix up freezers across chains and destroy both
 			// the freezer and the key-value store.
-			frgenesis, err := frdb.Ancient(chainFreezerHashTable, 0)
+			frgenesis, err := frdb.Ancient(freezerHashTable, 0)
 			if err != nil {
 				return nil, fmt.Errorf("failed to retrieve genesis from ancient %v", err)
 			} else if !bytes.Equal(kvgenesis, frgenesis) {
@@ -239,7 +208,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 			// are contiguous, otherwise we might end up with a non-functional freezer.
 			if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
 				// Subsequent header after the freezer limit is missing from the database.
-				// Reject startup if the database has a more recent head.
+				// Reject startup is the database has a more recent head.
 				if *ReadHeaderNumber(db, ReadHeadHeaderHash(db)) > frozen-1 {
 					return nil, fmt.Errorf("gap (#%d) in the chain between ancients and leveldb", frozen)
 				}
@@ -275,7 +244,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}()
 	}
 	return &freezerdb{
-		ancientRoot:   ancient,
 		KeyValueStore: db,
 		AncientStore:  frdb,
 	}, nil
@@ -305,15 +273,13 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 }
 
 // NewLevelDBDatabaseWithFreezer creates a persistent key-value database with a
-// freezer moving immutable chain segments into cold storage. The passed ancient
-// indicates the path of root ancient directory where the chain freezer can be
-// opened.
-func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
+// freezer moving immutable chain segments into cold storage.
+func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer string, namespace string, readonly bool) (ethdb.Database, error) {
 	kvdb, err := leveldb.New(file, cache, handles, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
-	frdb, err := NewDatabaseWithFreezer(kvdb, ancient, namespace, readonly)
+	frdb, err := NewDatabaseWithFreezer(kvdb, freezer, namespace, readonly)
 	if err != nil {
 		kvdb.Close()
 		return nil, err
@@ -475,7 +441,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	}
 	// Inspect append-only file store then.
 	ancientSizes := []*common.StorageSize{&ancientHeadersSize, &ancientBodiesSize, &ancientReceiptsSize, &ancientHashesSize, &ancientTdsSize}
-	for i, category := range []string{chainFreezerHeaderTable, chainFreezerBodiesTable, chainFreezerReceiptTable, chainFreezerHashTable, chainFreezerDifficultyTable} {
+	for i, category := range []string{freezerHeaderTable, freezerBodiesTable, freezerReceiptTable, freezerHashTable, freezerDifficultyTable} {
 		if size, err := db.AncientSize(category); err == nil {
 			*ancientSizes[i] += common.StorageSize(size)
 			total += common.StorageSize(size)

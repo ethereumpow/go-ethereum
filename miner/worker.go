@@ -275,6 +275,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		current:            &environment{header: eth.BlockChain().CurrentHeader()},
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -466,7 +467,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case <-timer.C:
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
-			if w.isRunning() && (w.chainConfig.Clique == nil || w.chainConfig.Clique.Period > 0) {
+			if w.isRunning() {
 				// Short circuit if no new transaction arrives.
 				if atomic.LoadInt32(&w.newTxs) == 0 {
 					timer.Reset(recommit)
@@ -592,10 +593,10 @@ func (w *worker) mainLoop() {
 				}
 				txs := make(map[common.Address]types.Transactions)
 				for _, tx := range ev.Txs {
-					acc, _ := types.Sender(w.current.signer, tx)
+					acc, _ := types.Sender(w.current.signer, tx, w.current.header.Number)
 					txs[acc] = append(txs[acc], tx)
 				}
-				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee)
+				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee, w.current.header.Number)
 				tcount := w.current.tcount
 				w.commitTransactions(w.current, txset, nil)
 
@@ -603,13 +604,6 @@ func (w *worker) mainLoop() {
 				// to the pending block
 				if tcount != w.current.tcount {
 					w.updateSnapshot(w.current)
-				}
-			} else {
-				// Special case, if the consensus engine is 0 period clique(dev mode),
-				// submit sealing work here since all empty submission will be rejected
-				// by clique. Of course the advance sealing(empty submission) is disabled.
-				if w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0 {
-					w.commitWork(nil, true, time.Now().Unix())
 				}
 			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
@@ -757,6 +751,16 @@ func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase com
 	// the miner to speed block sealing up a bit.
 	state, err := w.chain.StateAt(parent.Root())
 	if err != nil {
+		// Note since the sealing block can be created upon the arbitrary parent
+		// block, but the state of parent block may already be pruned, so the necessary
+		// state recovery is needed here in the future.
+		//
+		// The maximum acceptable reorg depth can be limited by the finalised block
+		// somehow. TODO(rjl493456442) fix the hard-coded number here later.
+		state, err = w.eth.StateAtBlock(parent, 1024, nil, false, false)
+		log.Warn("Recovered mining state", "root", parent.Root(), "err", err)
+	}
+	if err != nil {
 		return nil, err
 	}
 	state.StartPrefetcher("miner")
@@ -786,9 +790,6 @@ func (w *worker) makeEnv(parent *types.Block, header *types.Header, coinbase com
 
 // commitUncle adds the given block to uncle block set, returns error if failed to add.
 func (w *worker) commitUncle(env *environment, uncle *types.Header) error {
-	if w.isTTDReached(env.header) {
-		return errors.New("ignore uncle for beacon block")
-	}
 	hash := uncle.Hash()
 	if _, exist := env.uncles[hash]; exist {
 		return errors.New("uncle not unique")
@@ -879,15 +880,9 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 		// during transaction acceptance is the transaction pool.
 		//
 		// We use the eip155 signer regardless of the current hf.
-		from, _ := types.Sender(env.signer, tx)
+		from, _ := types.Sender(env.signer, tx, env.header.Number)
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
-		// add IsEthPoWFork check sign with chainid protected force check
-		if w.chainConfig.IsEthPoWFork(env.header.Number) && !tx.Protected() {
-			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eipEthPoW", w.chainConfig.EthPoWForkBlock)
-			txs.Pop()
-			continue
-		}
 		if tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
 			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
 
@@ -907,7 +902,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			txs.Shift()
+			txs.Shift(w.current.header.Number)
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
@@ -918,7 +913,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
-			txs.Shift()
+			txs.Shift(w.current.header.Number)
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
@@ -929,7 +924,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			txs.Shift()
+			txs.Shift(w.current.header.Number)
 		}
 	}
 
@@ -1065,13 +1060,13 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) error {
 		}
 	}
 	if len(localTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee, env.header.Number)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
 			return err
 		}
 	}
 	if len(remoteTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee, env.header.Number)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
 			return err
 		}
@@ -1152,20 +1147,18 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if err != nil {
 			return err
 		}
-		// If we're post merge, just ignore
-		if !w.isTTDReached(block.Header()) {
-			select {
-			case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now()}:
-				w.unconfirmed.Shift(block.NumberU64() - 1)
-				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"uncles", len(env.uncles), "txs", env.tcount,
-					"gas", block.GasUsed(), "fees", totalFees(block, env.receipts),
-					"elapsed", common.PrettyDuration(time.Since(start)))
+		select {
+		case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now()}:
+			w.unconfirmed.Shift(block.NumberU64() - 1)
+			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
+				"uncles", len(env.uncles), "txs", env.tcount,
+				"gas", block.GasUsed(), "fees", totalFees(block, env.receipts),
+				"elapsed", common.PrettyDuration(time.Since(start)))
 
-			case <-w.exitCh:
-				log.Info("Worker has exited")
-			}
+		case <-w.exitCh:
+			log.Info("Worker has exited")
 		}
+
 	}
 	if update {
 		w.updateSnapshot(env)
@@ -1201,13 +1194,6 @@ func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase 
 	case <-w.exitCh:
 		return nil, nil, errors.New("miner closed")
 	}
-}
-
-// isTTDReached returns the indicator if the given block has reached the total
-// terminal difficulty for The Merge transition.
-func (w *worker) isTTDReached(header *types.Header) bool {
-	td, ttd := w.chain.GetTd(header.ParentHash, header.Number.Uint64()-1), w.chain.Config().TerminalTotalDifficulty
-	return td != nil && ttd != nil && td.Cmp(ttd) >= 0
 }
 
 // copyReceipts makes a deep copy of the given receipts.

@@ -30,12 +30,12 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
-var fileFlag = &cli.StringFlag{Name: "file"}
+var fileFlag = cli.StringFlag{Name: "file"}
 
-var enrdumpCommand = &cli.Command{
+var enrdumpCommand = cli.Command{
 	Name:   "enrdump",
 	Usage:  "Pretty-prints node records",
 	Action: enrdump,
@@ -62,7 +62,7 @@ func enrdump(ctx *cli.Context) error {
 		}
 		source = string(b)
 	} else if ctx.NArg() == 1 {
-		source = ctx.Args().First()
+		source = ctx.Args()[0]
 	} else {
 		return fmt.Errorf("need record as argument")
 	}

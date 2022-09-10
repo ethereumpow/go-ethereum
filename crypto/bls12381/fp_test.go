@@ -465,6 +465,7 @@ func TestFpNonResidue(t *testing.T) {
 			i -= 1
 		}
 	}
+
 }
 
 func TestFp2Serialization(t *testing.T) {

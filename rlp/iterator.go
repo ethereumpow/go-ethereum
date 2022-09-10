@@ -36,6 +36,7 @@ func NewListIterator(data RawValue) (*listIterator, error) {
 		data: data[t : t+c],
 	}
 	return it, nil
+
 }
 
 // Next forwards the iterator one step, returns true if it was not at end yet

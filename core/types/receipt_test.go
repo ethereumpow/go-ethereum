@@ -311,7 +311,7 @@ func TestDeriveFields(t *testing.T) {
 		if txs[i].To() != nil && receipts[i].ContractAddress != (common.Address{}) {
 			t.Errorf("receipts[%d].ContractAddress = %s, want %s", i, receipts[i].ContractAddress.String(), (common.Address{}).String())
 		}
-		from, _ := Sender(signer, txs[i])
+		from, _ := Sender(signer, txs[i], new(big.Int))
 		contractAddress := crypto.CreateAddress(from, txs[i].Nonce())
 		if txs[i].To() == nil && receipts[i].ContractAddress != contractAddress {
 			t.Errorf("receipts[%d].ContractAddress = %s, want %s", i, receipts[i].ContractAddress.String(), contractAddress.String())

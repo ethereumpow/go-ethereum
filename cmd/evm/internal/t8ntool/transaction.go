@@ -32,7 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/tests"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 type result struct {
@@ -131,7 +131,7 @@ func Transaction(ctx *cli.Context) error {
 			continue
 		}
 		r := result{Hash: tx.Hash()}
-		if sender, err := types.Sender(signer, &tx); err != nil {
+		if sender, err := types.Sender(signer, &tx, new(big.Int)); err != nil {
 			r.Error = err
 			results = append(results, r)
 			continue

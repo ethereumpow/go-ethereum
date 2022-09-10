@@ -174,7 +174,6 @@ func runBenchmarkFile(b *testing.B, path string) {
 		return
 	}
 	for _, t := range m {
-		t := t
 		runBenchmark(b, &t)
 	}
 }
@@ -193,7 +192,7 @@ func runBenchmark(b *testing.B, t *StateTest) {
 				return
 			}
 			vmconfig.ExtraEips = eips
-			block := t.genesis(config).ToBlock()
+			block := t.genesis(config).ToBlock(nil)
 			_, statedb := MakePreState(rawdb.NewMemoryDatabase(), t.json.Pre, false)
 
 			var baseFee *big.Int
@@ -221,7 +220,7 @@ func runBenchmark(b *testing.B, t *StateTest) {
 					return
 				}
 
-				if _, err := types.Sender(types.LatestSigner(config), &ttx); err != nil {
+				if _, err := types.Sender(types.LatestSigner(config, new(big.Int)), &ttx, new(big.Int)); err != nil {
 					b.Error(err)
 					return
 				}
@@ -249,6 +248,7 @@ func runBenchmark(b *testing.B, t *StateTest) {
 				}
 				statedb.RevertToSnapshot(snapshot)
 			}
+
 		})
 	}
 }

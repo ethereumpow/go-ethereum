@@ -18,6 +18,7 @@ package tests
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -50,7 +51,7 @@ func (tt *TransactionTest) Run(config *params.ChainConfig) error {
 		if err := rlp.DecodeBytes(rlpData, tx); err != nil {
 			return nil, nil, err
 		}
-		sender, err := types.Sender(signer, tx)
+		sender, err := types.Sender(signer, tx, new(big.Int))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -76,10 +77,10 @@ func (tt *TransactionTest) Run(config *params.ChainConfig) error {
 		{"Frontier", types.FrontierSigner{}, tt.Frontier, false, false},
 		{"Homestead", types.HomesteadSigner{}, tt.Homestead, true, false},
 		{"EIP150", types.HomesteadSigner{}, tt.EIP150, true, false},
-		{"EIP158", types.NewEIP155Signer(config.ChainID), tt.EIP158, true, false},
-		{"Byzantium", types.NewEIP155Signer(config.ChainID), tt.Byzantium, true, false},
-		{"Constantinople", types.NewEIP155Signer(config.ChainID), tt.Constantinople, true, false},
-		{"Istanbul", types.NewEIP155Signer(config.ChainID), tt.Istanbul, true, true},
+		{"EIP158", types.NewEIP155Signer(func(bn *big.Int) *big.Int { return config.ChainID }), tt.EIP158, true, false},
+		{"Byzantium", types.NewEIP155Signer(func(bn *big.Int) *big.Int { return config.ChainID }), tt.Byzantium, true, false},
+		{"Constantinople", types.NewEIP155Signer(func(bn *big.Int) *big.Int { return config.ChainID }), tt.Constantinople, true, false},
+		{"Istanbul", types.NewEIP155Signer(func(bn *big.Int) *big.Int { return config.ChainID }), tt.Istanbul, true, true},
 	} {
 		sender, txhash, err := validateTx(tt.RLP, testcase.signer, testcase.isHomestead, testcase.isIstanbul)
 

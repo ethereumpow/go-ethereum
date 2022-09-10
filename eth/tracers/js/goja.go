@@ -55,7 +55,11 @@ type fromBufFn = func(vm *goja.Runtime, buf goja.Value, allowString bool) ([]byt
 
 func toBuf(vm *goja.Runtime, bufType goja.Value, val []byte) (goja.Value, error) {
 	// bufType is usually Uint8Array. This is equivalent to `new Uint8Array(val)` in JS.
-	return vm.New(bufType, vm.ToValue(vm.NewArrayBuffer(val)))
+	res, err := vm.New(bufType, vm.ToValue(val))
+	if err != nil {
+		return nil, err
+	}
+	return vm.ToValue(res), nil
 }
 
 func fromBuf(vm *goja.Runtime, bufType goja.Value, buf goja.Value, allowString bool) ([]byte, error) {
@@ -66,7 +70,6 @@ func fromBuf(vm *goja.Runtime, bufType goja.Value, buf goja.Value, allowString b
 			break
 		}
 		return common.FromHex(obj.String()), nil
-
 	case "Array":
 		var b []byte
 		if err := vm.ExportTo(buf, &b); err != nil {
@@ -78,7 +81,10 @@ func fromBuf(vm *goja.Runtime, bufType goja.Value, buf goja.Value, allowString b
 		if !obj.Get("constructor").SameAs(bufType) {
 			break
 		}
-		b := obj.Get("buffer").Export().(goja.ArrayBuffer).Bytes()
+		var b []byte
+		if err := vm.ExportTo(buf, &b); err != nil {
+			return nil, err
+		}
 		return b, nil
 	}
 	return nil, fmt.Errorf("invalid buffer type")
@@ -125,7 +131,7 @@ type jsTracer struct {
 // The methods `result` and `fault` are required to be present.
 // The methods `step`, `enter`, and `exit` are optional, but note that
 // `enter` and `exit` always go together.
-func newJsTracer(code string, ctx *tracers.Context, cfg json.RawMessage) (tracers.Tracer, error) {
+func newJsTracer(code string, ctx *tracers.Context) (tracers.Tracer, error) {
 	if c, ok := assetTracers[code]; ok {
 		code = c
 	}
@@ -177,17 +183,6 @@ func newJsTracer(code string, ctx *tracers.Context, cfg json.RawMessage) (tracer
 	t.exit = exit
 	t.result = result
 	t.fault = fault
-
-	// Pass in config
-	if setup, ok := goja.AssertFunction(obj.Get("setup")); ok {
-		cfgStr := "{}"
-		if cfg != nil {
-			cfgStr = string(cfg)
-		}
-		if _, err := setup(obj, vm.ToValue(cfgStr)); err != nil {
-			return nil, err
-		}
-	}
 	// Setup objects carrying data to JS. These are created once and re-used.
 	t.log = &steplog{
 		vm:       vm,
@@ -559,10 +554,10 @@ func (mo *memoryObj) slice(begin, end int64) ([]byte, error) {
 		return []byte{}, nil
 	}
 	if end < begin || begin < 0 {
-		return nil, fmt.Errorf("tracer accessed out of bound memory: offset %d, end %d", begin, end)
+		return nil, fmt.Errorf("Tracer accessed out of bound memory: offset %d, end %d", begin, end)
 	}
 	if mo.memory.Len() < int(end) {
-		return nil, fmt.Errorf("tracer accessed out of bound memory: available %d, offset %d, size %d", mo.memory.Len(), begin, end-begin)
+		return nil, fmt.Errorf("Tracer accessed out of bound memory: available %d, offset %d, size %d", mo.memory.Len(), begin, end-begin)
 	}
 	return mo.memory.GetCopy(begin, end-begin), nil
 }
@@ -584,7 +579,7 @@ func (mo *memoryObj) GetUint(addr int64) goja.Value {
 // getUint returns the 32 bytes at the specified address interpreted as a uint.
 func (mo *memoryObj) getUint(addr int64) (*big.Int, error) {
 	if mo.memory.Len() < int(addr)+32 || addr < 0 {
-		return nil, fmt.Errorf("tracer accessed out of bound memory: available %d, offset %d, size %d", mo.memory.Len(), addr, 32)
+		return nil, fmt.Errorf("Tracer accessed out of bound memory: available %d, offset %d, size %d", mo.memory.Len(), addr, 32)
 	}
 	return new(big.Int).SetBytes(mo.memory.GetPtr(addr, 32)), nil
 }
@@ -624,7 +619,7 @@ func (s *stackObj) Peek(idx int) goja.Value {
 // peek returns the nth-from-the-top element of the stack.
 func (s *stackObj) peek(idx int) (*big.Int, error) {
 	if len(s.stack.Data()) <= idx || idx < 0 {
-		return nil, fmt.Errorf("tracer accessed out of bound stack: size %d, index %d", len(s.stack.Data()), idx)
+		return nil, fmt.Errorf("Tracer accessed out of bound stack: size %d, index %d", len(s.stack.Data()), idx)
 	}
 	return s.stack.Back(idx).ToBig(), nil
 }
@@ -770,7 +765,7 @@ func (co *contractObj) GetValue() goja.Value {
 }
 
 func (co *contractObj) GetInput() goja.Value {
-	input := common.CopyBytes(co.contract.Input)
+	input := co.contract.Input
 	res, err := co.toBuf(co.vm, input)
 	if err != nil {
 		co.vm.Interrupt(err)
@@ -889,6 +884,7 @@ func (r *callframeResult) GetError() goja.Value {
 		return r.vm.ToValue(r.err.Error())
 	}
 	return goja.Undefined()
+
 }
 
 func (r *callframeResult) setupObject() *goja.Object {

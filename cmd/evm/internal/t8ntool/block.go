@@ -27,13 +27,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 //go:generate go run github.com/fjl/gencodec -type header -field-override headerMarshaling -out gen_header.go
@@ -67,10 +66,9 @@ type headerMarshaling struct {
 }
 
 type bbInput struct {
-	Header    *header      `json:"header,omitempty"`
-	OmmersRlp []string     `json:"ommers,omitempty"`
-	TxRlp     string       `json:"txs,omitempty"`
-	Clique    *cliqueInput `json:"clique,omitempty"`
+	Header    *header  `json:"header,omitempty"`
+	OmmersRlp []string `json:"ommers,omitempty"`
+	TxRlp     string   `json:"txs,omitempty"`
 
 	Ethash    bool                 `json:"-"`
 	EthashDir string               `json:"-"`
@@ -161,8 +159,6 @@ func (i *bbInput) SealBlock(block *types.Block) (*types.Block, error) {
 	switch {
 	case i.Ethash:
 		return i.sealEthash(block)
-	case i.Clique != nil:
-		return i.sealClique(block)
 	default:
 		return block, nil
 	}
@@ -193,45 +189,6 @@ func (i *bbInput) sealEthash(block *types.Block) (*types.Block, error) {
 	}
 	found := <-results
 	return block.WithSeal(found.Header()), nil
-}
-
-// sealClique seals the given block using clique.
-func (i *bbInput) sealClique(block *types.Block) (*types.Block, error) {
-	// If any clique value overwrites an explicit header value, fail
-	// to avoid silently building a block with unexpected values.
-	if i.Header.Extra != nil {
-		return nil, NewError(ErrorConfig, fmt.Errorf("sealing with clique will overwrite provided extra data"))
-	}
-	header := block.Header()
-	if i.Clique.Voted != nil {
-		if i.Header.Coinbase != nil {
-			return nil, NewError(ErrorConfig, fmt.Errorf("sealing with clique and voting will overwrite provided coinbase"))
-		}
-		header.Coinbase = *i.Clique.Voted
-	}
-	if i.Clique.Authorize != nil {
-		if i.Header.Nonce != nil {
-			return nil, NewError(ErrorConfig, fmt.Errorf("sealing with clique and voting will overwrite provided nonce"))
-		}
-		if *i.Clique.Authorize {
-			header.Nonce = [8]byte{}
-		} else {
-			header.Nonce = [8]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-		}
-	}
-	// Extra is fixed 32 byte vanity and 65 byte signature
-	header.Extra = make([]byte, 32+65)
-	copy(header.Extra[0:32], i.Clique.Vanity.Bytes()[:])
-
-	// Sign the seal hash and fill in the rest of the extra data
-	h := clique.SealHash(header)
-	sighash, err := crypto.Sign(h[:], i.Clique.Key)
-	if err != nil {
-		return nil, err
-	}
-	copy(header.Extra[32:], sighash)
-	block = block.WithSeal(header)
-	return block, nil
 }
 
 // BuildBlock constructs a block from the given inputs.
@@ -290,13 +247,6 @@ func readInput(ctx *cli.Context) (*bbInput, error) {
 		if err := decoder.Decode(inputData); err != nil {
 			return nil, NewError(ErrorJson, fmt.Errorf("failed unmarshaling stdin: %v", err))
 		}
-	}
-	if cliqueStr != stdinSelector && cliqueStr != "" {
-		var clique cliqueInput
-		if err := readFile(cliqueStr, "clique", &clique); err != nil {
-			return nil, err
-		}
-		inputData.Clique = &clique
 	}
 	if headerStr != stdinSelector {
 		var env header

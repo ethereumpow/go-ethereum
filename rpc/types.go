@@ -31,9 +31,9 @@ import (
 // API describes the set of methods offered over the RPC interface
 type API struct {
 	Namespace     string      // namespace under which the rpc methods of Service are exposed
-	Version       string      // deprecated - this field is no longer used, but retained for compatibility
+	Version       string      // api version for DApp's
 	Service       interface{} // receiver instance which holds the methods
-	Public        bool        // deprecated - this field is no longer used, but retained for compatibility
+	Public        bool        // indication if the methods must be considered safe for public use
 	Authenticated bool        // whether the api should only be available behind authentication.
 }
 
@@ -61,7 +61,6 @@ type jsonWriter interface {
 type BlockNumber int64
 
 const (
-	SafeBlockNumber      = BlockNumber(-4)
 	FinalizedBlockNumber = BlockNumber(-3)
 	PendingBlockNumber   = BlockNumber(-2)
 	LatestBlockNumber    = BlockNumber(-1)
@@ -93,9 +92,6 @@ func (bn *BlockNumber) UnmarshalJSON(data []byte) error {
 	case "finalized":
 		*bn = FinalizedBlockNumber
 		return nil
-	case "safe":
-		*bn = SafeBlockNumber
-		return nil
 	}
 
 	blckNum, err := hexutil.DecodeUint64(input)
@@ -122,8 +118,6 @@ func (bn BlockNumber) MarshalText() ([]byte, error) {
 		return []byte("pending"), nil
 	case FinalizedBlockNumber:
 		return []byte("finalized"), nil
-	case SafeBlockNumber:
-		return []byte("safe"), nil
 	default:
 		return hexutil.Uint64(bn).MarshalText()
 	}
@@ -172,10 +166,6 @@ func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 		return nil
 	case "finalized":
 		bn := FinalizedBlockNumber
-		bnh.BlockNumber = &bn
-		return nil
-	case "safe":
-		bn := SafeBlockNumber
 		bnh.BlockNumber = &bn
 		return nil
 	default:

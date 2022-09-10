@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -98,7 +97,7 @@ func (p *testTxPool) Pending(enforceTips bool) map[common.Address]types.Transact
 
 	batches := make(map[common.Address]types.Transactions)
 	for _, tx := range p.pool {
-		from, _ := types.Sender(types.HomesteadSigner{}, tx)
+		from, _ := types.Sender(types.HomesteadSigner{}, tx, new(big.Int))
 		batches[from] = append(batches[from], tx)
 	}
 	for _, batch := range batches {
@@ -150,7 +149,6 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		Database:   db,
 		Chain:      chain,
 		TxPool:     txpool,
-		Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 		Network:    1,
 		Sync:       downloader.SnapSync,
 		BloomCache: 1,

@@ -30,6 +30,7 @@ import (
 type fuzzer struct {
 	input     io.Reader
 	exhausted bool
+	debugging bool
 }
 
 func (f *fuzzer) read(size int) []byte {

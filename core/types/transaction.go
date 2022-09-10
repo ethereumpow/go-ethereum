@@ -386,13 +386,13 @@ func (tx *Transaction) Size() common.StorageSize {
 
 // WithSignature returns a new transaction with the given signature.
 // This signature needs to be in the [R || S || V] format where V is 0 or 1.
-func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, error) {
-	r, s, v, err := signer.SignatureValues(tx, sig)
+func (tx *Transaction) WithSignature(signer Signer, sig []byte, blockNumber *big.Int) (*Transaction, error) {
+	r, s, v, err := signer.SignatureValues(tx, sig, blockNumber)
 	if err != nil {
 		return nil, err
 	}
 	cpy := tx.inner.copy()
-	cpy.setSignatureValues(signer.ChainID(), v, r, s)
+	cpy.setSignatureValues(signer.ChainID(blockNumber), v, r, s)
 	return &Transaction{inner: cpy, time: tx.time}, nil
 }
 
@@ -426,24 +426,6 @@ func TxDifference(a, b Transactions) Transactions {
 	for _, tx := range a {
 		if _, ok := remove[tx.Hash()]; !ok {
 			keep = append(keep, tx)
-		}
-	}
-
-	return keep
-}
-
-// HashDifference returns a new set which is the difference between a and b.
-func HashDifference(a, b []common.Hash) []common.Hash {
-	keep := make([]common.Hash, 0, len(a))
-
-	remove := make(map[common.Hash]struct{})
-	for _, hash := range b {
-		remove[hash] = struct{}{}
-	}
-
-	for _, hash := range a {
-		if _, ok := remove[hash]; !ok {
-			keep = append(keep, hash)
 		}
 	}
 
@@ -522,11 +504,11 @@ type TransactionsByPriceAndNonce struct {
 //
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
-func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, baseFee *big.Int) *TransactionsByPriceAndNonce {
+func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, baseFee *big.Int, blockNumber *big.Int) *TransactionsByPriceAndNonce {
 	// Initialize a price and received time based heap with the head transactions
 	heads := make(TxByPriceAndTime, 0, len(txs))
 	for from, accTxs := range txs {
-		acc, _ := Sender(signer, accTxs[0])
+		acc, _ := Sender(signer, accTxs[0], blockNumber)
 		wrapped, err := NewTxWithMinerFee(accTxs[0], baseFee)
 		// Remove transaction if sender doesn't match from, or if wrapping fails.
 		if acc != from || err != nil {
@@ -556,8 +538,8 @@ func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
 }
 
 // Shift replaces the current best head with the next one from the same account.
-func (t *TransactionsByPriceAndNonce) Shift() {
-	acc, _ := Sender(t.signer, t.heads[0].tx)
+func (t *TransactionsByPriceAndNonce) Shift(blockNumber *big.Int) {
+	acc, _ := Sender(t.signer, t.heads[0].tx, blockNumber)
 	if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
 		if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
 			t.heads[0], t.txs[acc] = wrapped, txs[1:]
@@ -609,7 +591,7 @@ func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *b
 }
 
 // AsMessage returns the transaction as a core.Message.
-func (tx *Transaction) AsMessage(s Signer, baseFee *big.Int) (Message, error) {
+func (tx *Transaction) AsMessage(s Signer, baseFee *big.Int, blockNumber *big.Int) (Message, error) {
 	msg := Message{
 		nonce:      tx.Nonce(),
 		gasLimit:   tx.Gas(),
@@ -627,7 +609,7 @@ func (tx *Transaction) AsMessage(s Signer, baseFee *big.Int) (Message, error) {
 		msg.gasPrice = math.BigMin(msg.gasPrice.Add(msg.gasTipCap, baseFee), msg.gasFeeCap)
 	}
 	var err error
-	msg.from, err = Sender(s, tx)
+	msg.from, err = Sender(s, tx, blockNumber)
 	return msg, err
 }
 

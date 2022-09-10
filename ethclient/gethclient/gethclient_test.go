@@ -83,7 +83,7 @@ func generateTestChain() (*core.Genesis, []*types.Block) {
 		g.OffsetTime(5)
 		g.SetExtra([]byte("test"))
 	}
-	gblock := genesis.MustCommit(db)
+	gblock := genesis.ToBlock(db)
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(config, gblock, engine, db, 1, generate)
 	blocks = append([]*types.Block{gblock}, blocks...)
@@ -222,6 +222,7 @@ func testGetProof(t *testing.T, client *rpc.Client) {
 	if proof.Key != testSlot.String() {
 		t.Fatalf("invalid storage proof key, want: %v, got: %v", testSlot.String(), proof.Key)
 	}
+
 }
 
 func testGCStats(t *testing.T, client *rpc.Client) {
@@ -276,12 +277,14 @@ func testSubscribePendingTransactions(t *testing.T, client *rpc.Client) {
 	}
 	// Create transaction
 	tx := types.NewTransaction(0, common.Address{1}, big.NewInt(1), 22000, big.NewInt(1), nil)
-	signer := types.LatestSignerForChainID(chainID)
-	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), testKey)
+	signer := types.LatestSignerForChainID(func(b *big.Int) *big.Int {
+		return chainID
+	})
+	signature, err := crypto.Sign(signer.Hash(tx, new(big.Int)).Bytes(), testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signedTx, err := tx.WithSignature(signer, signature)
+	signedTx, err := tx.WithSignature(signer, signature, new(big.Int))
 	if err != nil {
 		t.Fatal(err)
 	}

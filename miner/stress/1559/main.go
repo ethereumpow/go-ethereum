@@ -105,7 +105,9 @@ func main() {
 
 		// The signer activates the 1559 features even before the fork,
 		// so the new 1559 txs can be created with this signer.
-		signer = types.LatestSignerForChainID(genesis.Config.ChainID)
+		signer = types.LatestSignerForChainID(func(b *big.Int) *big.Int {
+			return genesis.Config.ChainID
+		})
 	)
 	for {
 		// Stop when interrupted.
@@ -149,7 +151,7 @@ func main() {
 func makeTransaction(nonce uint64, privKey *ecdsa.PrivateKey, signer types.Signer, baseFee *big.Int) *types.Transaction {
 	// Generate legacy transaction
 	if rand.Intn(2) == 0 {
-		tx, err := types.SignTx(types.NewTransaction(nonce, crypto.PubkeyToAddress(privKey.PublicKey), new(big.Int), 21000, big.NewInt(100000000000+rand.Int63n(65536)), nil), signer, privKey)
+		tx, err := types.SignTx(types.NewTransaction(nonce, crypto.PubkeyToAddress(privKey.PublicKey), new(big.Int), 21000, big.NewInt(100000000000+rand.Int63n(65536)), nil), signer, new(big.Int), privKey)
 		if err != nil {
 			panic(err)
 		}
@@ -178,7 +180,7 @@ func makeTransaction(nonce uint64, privKey *ecdsa.PrivateKey, signer types.Signe
 		gasFeeCap = new(big.Int).Add(baseFee, gasTipCap)
 	}
 	return types.MustSignNewTx(privKey, signer, &types.DynamicFeeTx{
-		ChainID:    signer.ChainID(),
+		ChainID:    signer.ChainID(new(big.Int)),
 		Nonce:      nonce,
 		GasTipCap:  gasTipCap,
 		GasFeeCap:  gasFeeCap,
@@ -187,7 +189,7 @@ func makeTransaction(nonce uint64, privKey *ecdsa.PrivateKey, signer types.Signe
 		Value:      big.NewInt(100),
 		Data:       nil,
 		AccessList: nil,
-	})
+	}, new(big.Int))
 }
 
 // makeGenesis creates a custom Ethash genesis block based on some pre-defined

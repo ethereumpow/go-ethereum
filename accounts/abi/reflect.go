@@ -220,6 +220,7 @@ func mapArgNamesToStructFields(argNames []string, value reflect.Value) (map[stri
 
 	// second round ~~~
 	for _, argName := range argNames {
+
 		structFieldName := ToCamelCase(argName)
 
 		if structFieldName == "" {

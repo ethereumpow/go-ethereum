@@ -28,7 +28,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/jedisct1/go-minisign"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var gethPubKeys []string = []string{

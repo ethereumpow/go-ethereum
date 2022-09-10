@@ -17,10 +17,16 @@
 package core
 
 import (
+	"math/big"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/core/types"
 )
+
+type cachedTransaction struct {
+	tx          *types.Transaction
+	blockNumber *big.Int
+}
 
 // senderCacher is a concurrent transaction sender recoverer and cacher.
 var senderCacher = newTxSenderCacher(runtime.NumCPU())
@@ -33,7 +39,7 @@ var senderCacher = newTxSenderCacher(runtime.NumCPU())
 // ensure they process the early transactions fast.
 type txSenderCacherRequest struct {
 	signer types.Signer
-	txs    []*types.Transaction
+	txs    []*cachedTransaction
 	inc    int
 }
 
@@ -62,7 +68,10 @@ func newTxSenderCacher(threads int) *txSenderCacher {
 func (cacher *txSenderCacher) cache() {
 	for task := range cacher.tasks {
 		for i := 0; i < len(task.txs); i += task.inc {
-			types.Sender(task.signer, task.txs[i])
+			currentTx := task.txs[i]
+			if currentTx != nil {
+				types.Sender(task.signer, currentTx.tx, currentTx.blockNumber)
+			}
 		}
 	}
 }
@@ -70,7 +79,22 @@ func (cacher *txSenderCacher) cache() {
 // recover recovers the senders from a batch of transactions and caches them
 // back into the same data structures. There is no validation being done, nor
 // any reaction to invalid signatures. That is up to calling code later.
-func (cacher *txSenderCacher) recover(signer types.Signer, txs []*types.Transaction) {
+func (cacher *txSenderCacher) recoverWithBlockNumber(signer types.Signer, txs []*types.Transaction, blockNumber *big.Int) {
+	// If there's nothing to recover, abort
+	if len(txs) == 0 {
+		return
+	}
+	cachedTxs := make([]*cachedTransaction, len(txs))
+	for _, tx := range txs {
+		cachedTxs = append(cachedTxs, &cachedTransaction{tx: tx, blockNumber: blockNumber})
+	}
+	cacher.recover(signer, cachedTxs)
+}
+
+// recover recovers the senders from a batch of transactions and caches them
+// back into the same data structures. There is no validation being done, nor
+// any reaction to invalid signatures. That is up to calling code later.
+func (cacher *txSenderCacher) recover(signer types.Signer, txs []*cachedTransaction) {
 	// If there's nothing to recover, abort
 	if len(txs) == 0 {
 		return
@@ -80,10 +104,11 @@ func (cacher *txSenderCacher) recover(signer types.Signer, txs []*types.Transact
 	if len(txs) < tasks*4 {
 		tasks = (len(txs) + 3) / 4
 	}
+
 	for i := 0; i < tasks; i++ {
 		cacher.tasks <- &txSenderCacherRequest{
 			signer: signer,
-			txs:    txs[i:],
+			txs:    txs[:i],
 			inc:    tasks,
 		}
 	}
@@ -97,9 +122,11 @@ func (cacher *txSenderCacher) recoverFromBlocks(signer types.Signer, blocks []*t
 	for _, block := range blocks {
 		count += len(block.Transactions())
 	}
-	txs := make([]*types.Transaction, 0, count)
+	txs := make([]*cachedTransaction, 0, count)
 	for _, block := range blocks {
-		txs = append(txs, block.Transactions()...)
+		for _, tx := range block.Transactions() {
+			txs = append(txs, &cachedTransaction{tx: tx, blockNumber: block.Number()})
+		}
 	}
 	cacher.recover(signer, txs)
 }

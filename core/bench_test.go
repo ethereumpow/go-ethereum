@@ -96,7 +96,7 @@ func genValueTx(nbytes int) func(int, *BlockGen) {
 			Gas:      gas,
 			Data:     data,
 			GasPrice: gasPrice,
-		})
+		}, new(big.Int))
 		gen.AddTx(tx)
 	}
 }
@@ -148,7 +148,7 @@ func genTxRing(naccounts int) func(int, *BlockGen) {
 					Value:    availableFunds,
 					Gas:      params.TxGas,
 					GasPrice: gasPrice,
-				})
+				}, new(big.Int))
 			if err != nil {
 				panic(err)
 			}

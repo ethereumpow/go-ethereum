@@ -20,7 +20,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -170,17 +169,16 @@ type TraceConfig struct {
 	Tracer  *string
 	Timeout *string
 	Reexec  *uint64
-	// Config specific to given tracer. Note struct logger
-	// config are historically embedded in main object.
-	TracerConfig json.RawMessage
 }
 
 // TraceCallConfig is the config for traceCall API. It holds one more
 // field to override the state for tracing.
 type TraceCallConfig struct {
-	TraceConfig
+	*logger.Config
+	Tracer         *string
+	Timeout        *string
+	Reexec         *uint64
 	StateOverrides *ethapi.StateOverride
-	BlockOverrides *ethapi.BlockOverrides
 }
 
 // StdTraceConfig holds extra parameters to standard-json trace functions.
@@ -276,7 +274,7 @@ func (api *API) traceChain(ctx context.Context, start, end *types.Block, config 
 				blockCtx := core.NewEVMBlockContext(task.block.Header(), api.chainContext(localctx), nil)
 				// Trace all the transactions contained within
 				for i, tx := range task.block.Transactions() {
-					msg, _ := tx.AsMessage(signer, task.block.BaseFee())
+					msg, _ := tx.AsMessage(signer, task.block.BaseFee(), task.block.Number())
 					txctx := &Context{
 						BlockHash: task.block.Hash(),
 						TxIndex:   i,
@@ -528,7 +526,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	)
 	for i, tx := range block.Transactions() {
 		var (
-			msg, _    = tx.AsMessage(signer, block.BaseFee())
+			msg, _    = tx.AsMessage(signer, block.BaseFee(), block.Number())
 			txContext = core.NewEVMTxContext(msg)
 			vmenv     = vm.NewEVM(vmctx, txContext, statedb, chainConfig, vm.Config{})
 		)
@@ -601,7 +599,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 			defer pend.Done()
 			// Fetch and execute the next transaction trace tasks
 			for task := range jobs {
-				msg, _ := txs[task.index].AsMessage(signer, block.BaseFee())
+				msg, _ := txs[task.index].AsMessage(signer, block.BaseFee(), block.Number())
 				txctx := &Context{
 					BlockHash: blockHash,
 					TxIndex:   task.index,
@@ -624,7 +622,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		jobs <- &txTraceTask{statedb: statedb.Copy(), index: i}
 
 		// Generate the next state snapshot fast without tracing
-		msg, _ := tx.AsMessage(signer, block.BaseFee())
+		msg, _ := tx.AsMessage(signer, block.BaseFee(), block.Number())
 		statedb.Prepare(tx.Hash(), i)
 		vmenv := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), statedb, api.backend.ChainConfig(), vm.Config{})
 		if _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
@@ -709,7 +707,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	for i, tx := range block.Transactions() {
 		// Prepare the trasaction for un-traced execution
 		var (
-			msg, _    = tx.AsMessage(signer, block.BaseFee())
+			msg, _    = tx.AsMessage(signer, block.BaseFee(), block.Number())
 			txContext = core.NewEVMTxContext(msg)
 			vmConf    vm.Config
 			dump      *os.File
@@ -808,6 +806,7 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 // TraceCall lets you trace a given eth_call. It collects the structured logs
 // created during the execution of EVM if the given transaction was added on
 // top of the provided block and returns them as a JSON object.
+// You can provide -2 as a block number to trace on top of the pending block.
 func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
 	// Try to retrieve the specified block
 	var (
@@ -817,14 +816,6 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	if hash, ok := blockNrOrHash.Hash(); ok {
 		block, err = api.blockByHash(ctx, hash)
 	} else if number, ok := blockNrOrHash.Number(); ok {
-		if number == rpc.PendingBlockNumber {
-			// We don't have access to the miner here. For tracing 'future' transactions,
-			// it can be done with block- and state-overrides instead, which offers
-			// more flexibility and stability than trying to trace on 'pending', since
-			// the contents of 'pending' is unstable and probably not a true representation
-			// of what the next actual block is likely to contain.
-			return nil, errors.New("tracing on top of pending is not supported")
-		}
 		block, err = api.blockByNumber(ctx, number)
 	} else {
 		return nil, errors.New("invalid arguments; neither block nor hash specified")
@@ -841,19 +832,18 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	if err != nil {
 		return nil, err
 	}
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
-	// Apply the customization rules if required.
+	// Apply the customized state rules if required.
 	if config != nil {
 		if err := config.StateOverrides.Apply(statedb); err != nil {
 			return nil, err
 		}
-		config.BlockOverrides.Apply(&vmctx)
 	}
 	// Execute the trace
 	msg, err := args.ToMessage(api.backend.RPCGasCap(), block.BaseFee())
 	if err != nil {
 		return nil, err
 	}
+	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 
 	var traceConfig *TraceConfig
 	if config != nil {
@@ -883,7 +873,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	// Default tracer is the struct logger
 	tracer = logger.NewStructLogger(config.Config)
 	if config.Tracer != nil {
-		tracer, err = New(*config.Tracer, txctx, config.TracerConfig)
+		tracer, err = New(*config.Tracer, txctx)
 		if err != nil {
 			return nil, err
 		}
@@ -919,7 +909,9 @@ func APIs(backend Backend) []rpc.API {
 	return []rpc.API{
 		{
 			Namespace: "debug",
+			Version:   "1.0",
 			Service:   NewAPI(backend),
+			Public:    false,
 		},
 	}
 }

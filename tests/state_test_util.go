@@ -184,7 +184,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 		return nil, nil, common.Hash{}, UnsupportedForkError{subtest.Fork}
 	}
 	vmconfig.ExtraEips = eips
-	block := t.genesis(config).ToBlock()
+	block := t.genesis(config).ToBlock(nil)
 	snaps, statedb := MakePreState(rawdb.NewMemoryDatabase(), t.json.Pre, snapshotter)
 
 	var baseFee *big.Int
@@ -210,7 +210,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 			return nil, nil, common.Hash{}, err
 		}
 
-		if _, err := types.Sender(types.LatestSigner(config), &ttx); err != nil {
+		if _, err := types.Sender(types.LatestSigner(config, new(big.Int)), &ttx, new(big.Int)); err != nil {
 			return nil, nil, common.Hash{}, err
 		}
 	}
@@ -220,8 +220,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 	context := core.NewEVMBlockContext(block.Header(), nil, &t.json.Env.Coinbase)
 	context.GetHash = vmTestBlockHash
 	context.BaseFee = baseFee
-	context.Random = nil
-	if config.IsLondon(new(big.Int)) && t.json.Env.Random != nil {
+	if t.json.Env.Random != nil {
 		rnd := common.BigToHash(t.json.Env.Random)
 		context.Random = &rnd
 		context.Difficulty = big.NewInt(0)

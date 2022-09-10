@@ -18,36 +18,39 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/console"
-	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
 	consoleFlags = []cli.Flag{utils.JSpathFlag, utils.ExecFlag, utils.PreloadJSFlag}
 
-	consoleCommand = &cli.Command{
-		Action: localConsole,
-		Name:   "console",
-		Usage:  "Start an interactive JavaScript environment",
-		Flags:  flags.Merge(nodeFlags, rpcFlags, consoleFlags),
+	consoleCommand = cli.Command{
+		Action:   utils.MigrateFlags(localConsole),
+		Name:     "console",
+		Usage:    "Start an interactive JavaScript environment",
+		Flags:    utils.GroupFlags(nodeFlags, rpcFlags, consoleFlags),
+		Category: "CONSOLE COMMANDS",
 		Description: `
 The Geth console is an interactive shell for the JavaScript runtime environment
 which exposes a node admin interface as well as the Ðapp JavaScript API.
 See https://geth.ethereum.org/docs/interface/javascript-console.`,
 	}
 
-	attachCommand = &cli.Command{
-		Action:    remoteConsole,
+	attachCommand = cli.Command{
+		Action:    utils.MigrateFlags(remoteConsole),
 		Name:      "attach",
 		Usage:     "Start an interactive JavaScript environment (connect to node)",
 		ArgsUsage: "[endpoint]",
-		Flags:     flags.Merge([]cli.Flag{utils.DataDirFlag}, consoleFlags),
+		Flags:     utils.GroupFlags([]cli.Flag{utils.DataDirFlag}, consoleFlags),
+		Category:  "CONSOLE COMMANDS",
 		Description: `
 The Geth console is an interactive shell for the JavaScript runtime environment
 which exposes a node admin interface as well as the Ðapp JavaScript API.
@@ -55,12 +58,13 @@ See https://geth.ethereum.org/docs/interface/javascript-console.
 This command allows to open a console on a running geth node.`,
 	}
 
-	javascriptCommand = &cli.Command{
-		Action:    ephemeralConsole,
+	javascriptCommand = cli.Command{
+		Action:    utils.MigrateFlags(ephemeralConsole),
 		Name:      "js",
-		Usage:     "(DEPRECATED) Execute the specified JavaScript files",
+		Usage:     "Execute the specified JavaScript files",
 		ArgsUsage: "<jsfile> [jsfile...]",
-		Flags:     flags.Merge(nodeFlags, consoleFlags),
+		Flags:     utils.GroupFlags(nodeFlags, consoleFlags),
+		Category:  "CONSOLE COMMANDS",
 		Description: `
 The JavaScript VM exposes a node admin interface as well as the Ðapp
 JavaScript API. See https://geth.ethereum.org/docs/interface/javascript-console`,
@@ -83,7 +87,7 @@ func localConsole(ctx *cli.Context) error {
 	}
 	config := console.Config{
 		DataDir: utils.MakeDataDir(ctx),
-		DocRoot: ctx.String(utils.JSpathFlag.Name),
+		DocRoot: ctx.GlobalString(utils.JSpathFlag.Name),
 		Client:  client,
 		Preload: utils.MakeConsolePreloads(ctx),
 	}
@@ -94,7 +98,7 @@ func localConsole(ctx *cli.Context) error {
 	defer console.Stop(false)
 
 	// If only a short execution was requested, evaluate and return.
-	if script := ctx.String(utils.ExecFlag.Name); script != "" {
+	if script := ctx.GlobalString(utils.ExecFlag.Name); script != "" {
 		console.Evaluate(script)
 		return nil
 	}
@@ -115,15 +119,33 @@ func localConsole(ctx *cli.Context) error {
 // remoteConsole will connect to a remote geth instance, attaching a JavaScript
 // console to it.
 func remoteConsole(ctx *cli.Context) error {
-	if ctx.Args().Len() > 1 {
-		utils.Fatalf("invalid command-line: too many arguments")
-	}
-
 	endpoint := ctx.Args().First()
 	if endpoint == "" {
-		cfg := defaultNodeConfig()
-		utils.SetDataDir(ctx, &cfg)
-		endpoint = cfg.IPCEndpoint()
+		path := node.DefaultDataDir()
+		if ctx.GlobalIsSet(utils.DataDirFlag.Name) {
+			path = ctx.GlobalString(utils.DataDirFlag.Name)
+		}
+		if path != "" {
+			if ctx.GlobalBool(utils.RopstenFlag.Name) || ctx.GlobalBool(utils.PowstenFlag.Name) {
+				// Maintain compatibility with older Geth configurations storing the
+				// Ropsten database in `testnet` instead of `ropsten`.
+				legacyPath := filepath.Join(path, "testnet")
+				if common.FileExist(legacyPath) {
+					path = legacyPath
+				} else {
+					path = filepath.Join(path, "ropsten")
+				}
+			} else if ctx.GlobalBool(utils.RinkebyFlag.Name) {
+				path = filepath.Join(path, "rinkeby")
+			} else if ctx.GlobalBool(utils.GoerliFlag.Name) {
+				path = filepath.Join(path, "goerli")
+			} else if ctx.GlobalBool(utils.SepoliaFlag.Name) {
+				path = filepath.Join(path, "sepolia")
+			} else if ctx.GlobalBool(utils.KilnFlag.Name) {
+				path = filepath.Join(path, "kiln")
+			}
+		}
+		endpoint = fmt.Sprintf("%s/geth.ipc", path)
 	}
 	client, err := dialRPC(endpoint)
 	if err != nil {
@@ -131,7 +153,7 @@ func remoteConsole(ctx *cli.Context) error {
 	}
 	config := console.Config{
 		DataDir: utils.MakeDataDir(ctx),
-		DocRoot: ctx.String(utils.JSpathFlag.Name),
+		DocRoot: ctx.GlobalString(utils.JSpathFlag.Name),
 		Client:  client,
 		Preload: utils.MakeConsolePreloads(ctx),
 	}
@@ -141,7 +163,7 @@ func remoteConsole(ctx *cli.Context) error {
 	}
 	defer console.Stop(false)
 
-	if script := ctx.String(utils.ExecFlag.Name); script != "" {
+	if script := ctx.GlobalString(utils.ExecFlag.Name); script != "" {
 		console.Evaluate(script)
 		return nil
 	}
@@ -149,19 +171,6 @@ func remoteConsole(ctx *cli.Context) error {
 	// Otherwise print the welcome screen and enter interactive mode
 	console.Welcome()
 	console.Interactive()
-	return nil
-}
-
-// ephemeralConsole starts a new geth node, attaches an ephemeral JavaScript
-// console to it, executes each of the files specified as arguments and tears
-// everything down.
-func ephemeralConsole(ctx *cli.Context) error {
-	var b strings.Builder
-	for _, file := range ctx.Args().Slice() {
-		b.Write([]byte(fmt.Sprintf("loadScript('%s');", file)))
-	}
-	utils.Fatalf(`The "js" command is deprecated. Please use the following instead:
-geth --exec "%s" console`, b.String())
 	return nil
 }
 
@@ -177,4 +186,49 @@ func dialRPC(endpoint string) (*rpc.Client, error) {
 		endpoint = endpoint[4:]
 	}
 	return rpc.Dial(endpoint)
+}
+
+// ephemeralConsole starts a new geth node, attaches an ephemeral JavaScript
+// console to it, executes each of the files specified as arguments and tears
+// everything down.
+func ephemeralConsole(ctx *cli.Context) error {
+	// Create and start the node based on the CLI flags
+	stack, backend := makeFullNode(ctx)
+	startNode(ctx, stack, backend, false)
+	defer stack.Close()
+
+	// Attach to the newly started node and start the JavaScript console
+	client, err := stack.Attach()
+	if err != nil {
+		return fmt.Errorf("Failed to attach to the inproc geth: %v", err)
+	}
+	config := console.Config{
+		DataDir: utils.MakeDataDir(ctx),
+		DocRoot: ctx.GlobalString(utils.JSpathFlag.Name),
+		Client:  client,
+		Preload: utils.MakeConsolePreloads(ctx),
+	}
+
+	console, err := console.New(config)
+	if err != nil {
+		return fmt.Errorf("Failed to start the JavaScript console: %v", err)
+	}
+	defer console.Stop(false)
+
+	// Interrupt the JS interpreter when node is stopped.
+	go func() {
+		stack.Wait()
+		console.Stop(false)
+	}()
+
+	// Evaluate each of the specified JavaScript files.
+	for _, file := range ctx.Args() {
+		if err = console.Execute(file); err != nil {
+			return fmt.Errorf("Failed to execute %s: %v", file, err)
+		}
+	}
+
+	// The main script is now done, but keep running timers/callbacks.
+	console.Stop(true)
+	return nil
 }
