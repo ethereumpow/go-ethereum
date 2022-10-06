@@ -59,7 +59,7 @@ var (
 
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(1), //10001
+		ChainID:                 big.NewInt(1), //11111
 		HomesteadBlock:          big.NewInt(1_150_000),
 		DAOForkBlock:            big.NewInt(1_920_000),
 		DAOForkSupport:          true,
@@ -78,7 +78,7 @@ var (
 		GrayGlacierBlock:        big.NewInt(15_050_000),
 		EthPoWForkBlock:         big.NewInt(15_537_394),
 		EthPoWForkSupport:       true,
-		ChainID_ALT:             big.NewInt(10001), //10001
+		ChainID_ALT:             big.NewInt(11111), //11111
 		TerminalTotalDifficulty: nil,               // 58_750_000_000_000_000_000_000
 		Ethash:                  new(EthashConfig),
 	}
